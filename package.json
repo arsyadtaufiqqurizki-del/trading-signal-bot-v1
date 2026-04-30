@@ -1,0 +1,19 @@
+{
+  "name": "trading-signal-bot",
+  "version": "1.0.0",
+  "description": "AI Trading Assistant – High Probability Signal Generator",
+  "main": "index.js",
+  "scripts": {
+    "start": "node bot.js",
+    "scan": "node index.js"
+  },
+  "keywords": ["trading", "crypto", "signal", "telegram"],
+  "author": "Arsyad",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "axios": "^1.15.2",
+    "dotenv": "^17.4.2",
+    "node-telegram-bot-api": "^0.67.0"
+  }
+}
