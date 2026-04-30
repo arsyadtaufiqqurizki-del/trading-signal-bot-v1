@@ -14,6 +14,23 @@ if (!token) {
   process.exit(1);
 }
 
+// ==========================================
+// DUMMY WEB SERVER UNTUK RENDER DEPLOYMENT
+// Render mewajibkan 'Web Service' menggunakan PORT
+// ==========================================
+const express = require('express');
+const app = express();
+const port = process.env.PORT || 3000;
+
+app.get('/', (req, res) => {
+  res.send('AI Trading Bot is Running 24/7!');
+});
+
+app.listen(port, () => {
+  console.log(`Web server berjalan pada port ${port} (Memenuhi syarat Render)`);
+});
+// ==========================================
+
 // Inisialisasi bot dengan polling
 const bot = new TelegramBot(token, { polling: true });
 
