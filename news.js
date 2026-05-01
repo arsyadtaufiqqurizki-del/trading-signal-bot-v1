@@ -1,76 +1,171 @@
+const axios = require('axios');
 const Parser = require('rss-parser');
-const YahooFinance = require('yahoo-finance2').default;
-const yahooFinance = new YahooFinance();
-const parser = new Parser();
+const parser = new Parser({ timeout: 10000 });
+
+// ─── HELPER ──────────────────────────────────────────────────────────────────
+function fmt(num, decimals = 2) {
+    if (num == null || isNaN(num)) return 'N/A';
+    return Number(num).toLocaleString('id-ID', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+}
+
+function fmtVol(vol) {
+    if (!vol || isNaN(vol)) return 'N/A';
+    if (vol >= 1_000_000_000) return (vol / 1_000_000_000).toFixed(2) + ' M';
+    if (vol >= 1_000_000) return (vol / 1_000_000).toFixed(2) + ' Jt';
+    return vol.toLocaleString('id-ID');
+}
+
+function arrow(change) {
+    if (change == null || isNaN(change)) return '➖';
+    return change >= 0 ? '🟢' : '🔴';
+}
+
+function changeSign(change) {
+    if (change == null || isNaN(change)) return '±0,00';
+    return (change >= 0 ? '+' : '') + fmt(change) + '%';
+}
+
+async function yahooQuote(ticker) {
+    try {
+        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1d&range=5d`;
+        const resp = await axios.get(url, {
+            headers: { 'User-Agent': 'Mozilla/5.0 (compatible; MarketBot/2.0)' },
+            timeout: 10000
+        });
+        const result = resp.data?.chart?.result?.[0];
+        if (!result) return null;
+
+        const meta = result.meta;
+        const price = meta.regularMarketPrice;
+        const prevClose = meta.chartPreviousClose ?? meta.previousClose;
+        const change = prevClose ? ((price - prevClose) / prevClose * 100) : null;
+        const changeAbs = prevClose ? (price - prevClose) : null;
+        const volume = meta.regularMarketVolume;
+
+        return { price, prevClose, change, changeAbs, volume };
+    } catch (e) {
+        return null;
+    }
+}
 
 async function getNewsData() {
     try {
-        // 1. Tarik Data Mentah Market (IHSG, BBCA, BTC)
-        const ihsg = await yahooFinance.quote('^JKSE').catch(() => null);
-        const bbca = await yahooFinance.quote('BBCA.JK').catch(() => null);
-        const btc = await yahooFinance.quote('BTC-USD').catch(() => null);
+        // 1. Tarik Data Mentah
+        const [ihsg, bbca, btcResp, fngResp, newsResults, globalNews] = await Promise.allSettled([
+            yahooQuote('^JKSE'),
+            yahooQuote('BBCA.JK'),
+            axios.get('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true', { timeout: 10000 }),
+            axios.get('https://api.alternative.me/fng/?limit=1', { timeout: 8000 }),
+            Promise.all([
+                parser.parseURL('https://www.cnbcindonesia.com/news/rss').catch(() => ({ items: [] })),
+                parser.parseURL('https://feed.bisnis.com/biz/home/articles/rss').catch(() => ({ items: [] }))
+            ]),
+            Promise.all([
+                parser.parseURL('http://feeds.bbci.co.uk/news/business/rss.xml').catch(() => ({ items: [] })),
+                parser.parseURL('https://rss.nytimes.com/services/xml/rss/nyt/Economy.xml').catch(() => ({ items: [] }))
+            ])
+        ]);
 
-        const today = new Date().toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute:'2-digit' });
+        const today = new Date().toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Asia/Jakarta' });
+        const time = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' });
+        const sep = '─────────────────────────────';
 
-        let finalMessage = `<b>📊 DAILY MARKET INTELLIGENCE</b>\n📅 <i>${today} WIB</i>\n\n`;
+        let lines = [];
+        lines.push(`<b>📊 DAILY MARKET INTELLIGENCE REPORT</b>`);
+        lines.push(`📅 ${today}`);
+        lines.push(`🕙 Update otomatis · ${time} WIB`);
+        lines.push(sep);
 
-        // IHSG
-        finalMessage += `<b>🇮🇩 Market Indonesia (IHSG)</b>\n`;
-        if (ihsg) {
-            const icon = ihsg.regularMarketChange >= 0 ? '🟢' : '🔴';
-            finalMessage += `▪️ Harga Terkini: <b>${ihsg.regularMarketPrice.toLocaleString()}</b>\n`;
-            finalMessage += `▪️ Perubahan: ${icon} ${ihsg.regularMarketChange.toFixed(2)} (${ihsg.regularMarketChangePercent.toFixed(2)}%)\n\n`;
+        // --- SEKSI 1: IHSG ---
+        lines.push(`\n<b>🇮🇩 PASAR INDONESIA — IDX Composite (IHSG)</b>`);
+        if (ihsg.status === 'fulfilled' && ihsg.value) {
+            const d = ihsg.value;
+            const a = arrow(d.change);
+            let sentiment = 'Sideways ↔️';
+            let desc = 'Pergerakan masih terbatas, pelaku pasar wait-and-see.';
+            if (d.change >= 1.0) { sentiment = 'Bullish 🚀'; desc = 'Tekanan beli mendominasi, pasar optimis.'; }
+            else if (d.change <= -1.0) { sentiment = 'Bearish 🔻'; desc = 'Tekanan jual meningkat, sentimen negatif.'; }
+            lines.push(`${a} Harga: <b>${fmt(d.price)}</b> poin`);
+            lines.push(`📈 Perubahan: ${changeSign(d.change)} (${d.changeAbs >= 0 ? '+' : ''}${fmt(d.changeAbs)})`);
+            lines.push(`🧭 Sentimen: <b>${sentiment}</b>`);
+            lines.push(`💬 <i>${desc}</i>`);
         } else {
-            finalMessage += `⚠️ Data IHSG gagal ditarik\n\n`;
+            lines.push(`⚠️ Data IHSG tidak dapat ditarik.`);
         }
+        lines.push(sep);
 
-        // BBCA
-        finalMessage += `<b>🏢 Saham Blue Chip (BBCA)</b>\n`;
-        if (bbca) {
-            const icon = bbca.regularMarketChange >= 0 ? '🟢' : '🔴';
-            finalMessage += `▪️ Harga Terkini: <b>Rp ${bbca.regularMarketPrice.toLocaleString()}</b>\n`;
-            finalMessage += `▪️ Perubahan: ${icon} ${bbca.regularMarketChangePercent.toFixed(2)}%\n`;
-            finalMessage += `▪️ Volume: ${bbca.regularMarketVolume.toLocaleString()}\n\n`;
+        // --- SEKSI 2: BBCA ---
+        lines.push(`\n<b>🏦 SAHAM BLUE CHIP — Bank Central Asia (BBCA)</b>`);
+        if (bbca.status === 'fulfilled' && bbca.value) {
+            const d = bbca.value;
+            const a = arrow(d.change);
+            let insight = 'Monitor area support/resistance terdekat.';
+            if (d.change >= 2) insight = 'Momentum beli kuat. Perhatikan breakout resistance.';
+            else if (d.change <= -2) insight = 'Tekanan jual signifikan. Waspadai breakdown support.';
+            lines.push(`${a} Harga: <b>Rp${fmt(d.price, 0)}</b>`);
+            lines.push(`📈 Perubahan: ${changeSign(d.change)} (Rp${d.changeAbs >= 0 ? '+' : ''}${fmt(d.changeAbs, 0)})`);
+            lines.push(`📦 Volume: ${fmtVol(d.volume)} lot`);
+            lines.push(`💡 Insight: <i>${insight}</i>`);
         } else {
-            finalMessage += `⚠️ Data BBCA gagal ditarik\n\n`;
+            lines.push(`⚠️ Data BBCA tidak dapat ditarik.`);
         }
+        lines.push(sep);
 
-        // BTC
-        finalMessage += `<b>🪙 Cryptocurrency (Bitcoin)</b>\n`;
-        if (btc) {
-            const icon = btc.regularMarketChange >= 0 ? '🟢' : '🔴';
-            finalMessage += `▪️ Harga Terkini: <b>$${btc.regularMarketPrice.toLocaleString()}</b>\n`;
-            finalMessage += `▪️ Perubahan 24 Jam: ${icon} ${btc.regularMarketChangePercent.toFixed(2)}%\n\n`;
-        } else {
-            finalMessage += `⚠️ Data BTC gagal ditarik\n\n`;
+        // --- SEKSI 3: BITCOIN ---
+        lines.push(`\n<b>₿ CRYPTOCURRENCY — Bitcoin (BTC/USD)</b>`);
+        let btcPrice = null, btcChange = null;
+        if (btcResp.status === 'fulfilled') {
+            const d = btcResp.value.data?.bitcoin;
+            btcPrice = d?.usd;
+            btcChange = d?.usd_24h_change;
         }
-
-        // 2. Tarik Berita Mentah (Top Indonesia & Global)
-        const feeds = [
-            { name: "Berita Top Indonesia", url: 'https://www.cnbcindonesia.com/news/rss' },
-            { name: "Berita Makro Global", url: 'http://feeds.bbci.co.uk/news/business/rss.xml' }
-        ];
-
-        for (const feedObj of feeds) {
-            finalMessage += `<b>📰 ${feedObj.name}</b>\n`;
-            try {
-                const feed = await parser.parseURL(feedObj.url);
-                for (let i = 0; i < Math.min(3, feed.items.length); i++) {
-                    const item = feed.items[i];
-                    finalMessage += `▪️ <b>${item.title}</b>\n<a href="${item.link}">Baca selengkapnya</a>\n\n`;
-                }
-            } catch (error) {
-                finalMessage += `⚠️ Gagal menarik headline berita.\n\n`;
+        if (btcPrice) {
+            const a = arrow(btcChange);
+            lines.push(`${a} Harga: <b>$${fmt(btcPrice)}</b>`);
+            lines.push(`📈 24h Change: ${changeSign(btcChange)}`);
+            if (fngResp.status === 'fulfilled') {
+                const f = fngResp.value.data?.data?.[0];
+                const emoji = Number(f.value) >= 60 ? '😤' : Number(f.value) >= 40 ? '😐' : '😨';
+                lines.push(`🧠 Fear & Greed Index: ${emoji} ${f.value}/100 — <i>${f.value_classification}</i>`);
             }
+            let btcInsight = 'Pantau area OB (Order Block) terdekat.';
+            if (btcChange <= -4) btcInsight = 'Sell-off signifikan. Konfirmasi BOS bawah sebelum entry.';
+            lines.push(`💡 Insight: <i>${btcInsight}</i>`);
+        } else {
+            lines.push(`⚠️ Data Bitcoin tidak dapat ditarik.`);
         }
+        lines.push(sep);
 
-        finalMessage += `<i>(Catatan: Laporan ini adalah data mentah tanpa ringkasan Insight karena mode AI dimatikan)</i>`;
+        // --- SEKSI 4: BERITA ---
+        lines.push(`\n<b>📰 BERITA EKONOMI & BISNIS TOP INDONESIA</b>`);
+        if (newsResults.status === 'fulfilled') {
+            const allItems = newsResults.value.flatMap(r => r.items).slice(0, 4);
+            allItems.forEach((item, i) => {
+                lines.push(`\n${i + 1}. <b>${item.title.trim()}</b>`);
+                lines.push(`🔗 <a href="${item.link}">Baca di CNBC/Bisnis</a>`);
+            });
+        }
+        lines.push(sep);
 
-        return finalMessage;
+        // --- SEKSI 5: MAKRO GLOBAL ---
+        lines.push(`\n<b>🌍 KONDISI MAKRO GLOBAL</b>`);
+        if (globalNews.status === 'fulfilled') {
+            const headlines = globalNews.value.flatMap(r => r.items).map(i => i.title.toLowerCase()).join(' ');
+            let riskMode = 'Netral ⚪', riskDesc = 'Pasar menunggu katalis dominan.';
+            if (headlines.includes('inflation') || headlines.includes('cpi')) riskDesc = 'Inflasi masih menjadi perhatian utama bank sentral.';
+            if (headlines.includes('war') || headlines.includes('conflict')) { riskMode = 'Risk-Off 🔴'; riskDesc = 'Ketegangan geopolitik meningkatkan ketidakpastian.'; }
+            lines.push(`⚡ Mode Pasar: <b>${riskMode}</b>`);
+            lines.push(`💬 <i>${riskDesc}</i>`);
+        }
+        lines.push(sep);
+
+        lines.push(`\n⚠️ <i>Laporan informatif, bukan rekomendasi investasi.</i>`);
+        lines.push(`🤖 <b>Market Intelligence System v2.0</b> (Tanpa AI)`);
+
+        return lines.join('\n');
 
     } catch (error) {
-        console.error("Error fetching market intel:", error);
-        return `❌ <b>Terjadi kesalahan sistem</b>: <code>${error.message}</code>`;
+        return `❌ <b>Gagal generate laporan:</b> ${error.message}`;
     }
 }
 
