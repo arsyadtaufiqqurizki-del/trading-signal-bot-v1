@@ -8,11 +8,15 @@ const {
 const { fmt } = require('./utils');
 
 const PAIRS = [
-  { symbol: 'BTCUSDT', name: 'BTC/USDT', htf: '4h', ltf: '1h' },
-  { symbol: 'ETHUSDT', name: 'ETH/USDT', htf: '4h', ltf: '1h' },
-  { symbol: 'SOLUSDT', name: 'SOL/USDT', htf: '4h', ltf: '1h' },
-  { symbol: 'DOGEUSDT', name: 'DOGE/USDT', htf: '4h', ltf: '1h' },
+  { symbol: 'BTCUSDT',  name: 'BTC/USDT',  htf: '4h', ltf: '1h' },
+  { symbol: 'ETHUSDT',  name: 'ETH/USDT',  htf: '4h', ltf: '1h' },
+  { symbol: 'SOLUSDT',  name: 'SOL/USDT',  htf: '4h', ltf: '1h' },
   { symbol: 'HYPEUSDT', name: 'HYPE/USDT', htf: '4h', ltf: '1h' },
+  { symbol: 'TAOUSDT',  name: 'TAO/USDT',  htf: '4h', ltf: '1h' },
+  { symbol: 'SUIUSDT',  name: 'SUI/USDT',  htf: '4h', ltf: '1h' },
+  { symbol: 'DOGEUSDT', name: 'DOGE/USDT', htf: '4h', ltf: '1h' },
+  { symbol: 'BNBUSDT',  name: 'BNB/USDT',  htf: '4h', ltf: '1h' },
+  { symbol: 'XRPUSDT',  name: 'XRP/USDT',  htf: '4h', ltf: '1h' },
 ];
 
 async function analyzeAsset(pair) {
@@ -53,8 +57,8 @@ async function analyzeAsset(pair) {
 
   // ── HTF BIAS ─────────────────────────────────────────────────────────────
   let htfBias = 'NEUTRAL';
-  if (curHtfE50 > curHtfE200 && htfStruct.trend === 'UPTREND')   htfBias = 'BULLISH';
-  if (curHtfE50 < curHtfE200 && htfStruct.trend === 'DOWNTREND') htfBias = 'BEARISH';
+  if (curHtfE50 > curHtfE200 && htfStruct.trend !== 'DOWNTREND') htfBias = 'BULLISH';
+  if (curHtfE50 < curHtfE200 && htfStruct.trend !== 'UPTREND')   htfBias = 'BEARISH';
 
   // ── CONFLUENCE SCORING ───────────────────────────────────────────────────
   let longScore = 0, shortScore = 0;
@@ -68,9 +72,9 @@ async function analyzeAsset(pair) {
   if (price > curLtfE50 && curLtfE50 > curLtfE200) { longScore++; longFactors.push('Price > EMA50 > EMA200 ✅'); }
   if (price < curLtfE50 && curLtfE50 < curLtfE200) { shortScore++; shortFactors.push('Price < EMA50 < EMA200 ✅'); }
 
-  // 3. RSI condition
-  if (curRsi < 40 && curRsi > 25) { longScore++; longFactors.push(`RSI Oversold (${fmt(curRsi, 1)}) ✅`); }
-  if (curRsi > 60 && curRsi < 80) { shortScore++; shortFactors.push(`RSI Overbought (${fmt(curRsi, 1)}) ✅`); }
+  // 3. RSI condition (relax slightly for more signals)
+  if (curRsi < 45 && curRsi > 15) { longScore++; longFactors.push(`RSI Oversold/Low (${fmt(curRsi, 1)}) ✅`); }
+  if (curRsi > 55 && curRsi < 85) { shortScore++; shortFactors.push(`RSI Overbought/High (${fmt(curRsi, 1)}) ✅`); }
 
   // 4. RSI divergence
   if (ltfDiv === 'BULLISH_DIVERGENCE') { longScore++; longFactors.push('Bullish RSI Divergence ✅'); }
@@ -99,12 +103,12 @@ async function analyzeAsset(pair) {
   if (longScore >= MIN_CONFLUENCE && longScore > shortScore) {
     const atr = ltfAtr;
     const sl = parseFloat((price - atr * 1.5).toFixed(price > 1000 ? 0 : 4));
-    const tp1 = parseFloat((price + atr * 2.0).toFixed(price > 1000 ? 0 : 4));
-    const tp2 = parseFloat((price + atr * 3.5).toFixed(price > 1000 ? 0 : 4));
+    const tp1 = parseFloat((price + atr * 3.0).toFixed(price > 1000 ? 0 : 4));
+    const tp2 = parseFloat((price + atr * 5.0).toFixed(price > 1000 ? 0 : 4));
     const risk = price - sl;
     const rr  = parseFloat(((tp1 - price) / risk).toFixed(2));
 
-    if (rr >= 2.0 && sl > 0) {
+    if (rr >= 1.9 && sl > 0) { // Using 1.9 to account for rounding and slight noise
       signal = {
         pair: pair.name, direction: 'LONG',
         entry: price, sl, tp1, tp2, rr,
@@ -118,12 +122,12 @@ async function analyzeAsset(pair) {
   } else if (shortScore >= MIN_CONFLUENCE && shortScore > longScore) {
     const atr = ltfAtr;
     const sl = parseFloat((price + atr * 1.5).toFixed(price > 1000 ? 0 : 4));
-    const tp1 = parseFloat((price - atr * 2.0).toFixed(price > 1000 ? 0 : 4));
-    const tp2 = parseFloat((price - atr * 3.5).toFixed(price > 1000 ? 0 : 4));
+    const tp1 = parseFloat((price - atr * 3.0).toFixed(price > 1000 ? 0 : 4));
+    const tp2 = parseFloat((price - atr * 5.0).toFixed(price > 1000 ? 0 : 4));
     const risk = sl - price;
     const rr  = parseFloat(((price - tp1) / risk).toFixed(2));
 
-    if (rr >= 2.0 && tp1 > 0) {
+    if (rr >= 1.9 && tp1 > 0) {
       signal = {
         pair: pair.name, direction: 'SHORT',
         entry: price, sl, tp1, tp2, rr,
