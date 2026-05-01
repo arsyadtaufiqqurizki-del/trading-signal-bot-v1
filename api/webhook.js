@@ -13,11 +13,11 @@ module.exports = async (req, res) => {
       const text = msg.text;
 
       if (text.startsWith('/start')) {
-        await bot.sendMessage(chatId, `Halo! Saya adalah <b>AI Trading Assistant</b> Anda.\n\nSaya dirancang untuk mendeteksi *High-Probability Setups* dengan Risk/Reward minimal 1:2.\n\nGunakan perintah berikut:\n/scan - Untuk melakukan scanning koin sekarang\n/status - Untuk melihat status bot\n/news - Untuk melihat berita market & crypto terbaru`, { parse_mode: "HTML" });
-      } else if (text.startsWith('/scan')) {
+        await bot.sendMessage(chatId, `Halo! Saya adalah <b>AI Trading Assistant</b> Anda.\n\nSaya dirancang untuk mendeteksi *High-Probability Setups* dengan Risk/Reward minimal 1:2.\n\nGunakan perintah berikut:\n/high - Untuk melakukan scanning koin sekarang\n/status - Untuk melihat status bot\n/news - Untuk melihat berita market & crypto terbaru`, { parse_mode: "HTML" });
+      } else if (text.startsWith('/high')) {
         await runAnalysis(bot, chatId, false);
       } else if (text.startsWith('/status')) {
-        await bot.sendMessage(chatId, `✅ <b>Bot Active & Running di Vercel Serverless</b>\nSistem siap menganalisis market kapan saja Anda mengetik /scan. Otomatis scan setiap 1 jam berjalan di latar belakang.`, { parse_mode: "HTML" });
+        await bot.sendMessage(chatId, `✅ <b>Bot Active & Running di Vercel Serverless</b>\nSistem siap menganalisis market kapan saja Anda mengetik /high. Otomatis scan setiap 1 jam berjalan di latar belakang.`, { parse_mode: "HTML" });
       } else if (text.startsWith('/news')) {
         await bot.sendMessage(chatId, "⏳ Sedang menarik berita terkini...");
         const newsMessage = await getNewsData();
