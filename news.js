@@ -153,7 +153,7 @@ async function getNewsData() {
                 hasNews = true;
                 top10.forEach((item, i) => {
                     lines.push(`\n${i + 1}. <b>${item.title.trim()}</b>`);
-                    lines.push(`🔗 <a href="${item.link}">Baca Berita</a>`);
+                    lines.push(`🔗 ${item.link}`);
                 });
             }
         }
@@ -171,7 +171,7 @@ async function getNewsData() {
                 hasGlobalNews = true;
                 top10Global.forEach((item, i) => {
                     lines.push(`\n${i + 1}. <b>${item.title.trim()}</b>`);
-                    lines.push(`🔗 <a href="${item.link}">Baca Berita</a>`);
+                    lines.push(`🔗 ${item.link}`);
                 });
             }
         }
