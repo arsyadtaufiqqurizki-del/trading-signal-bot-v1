@@ -1,6 +1,6 @@
 const axios = require('axios');
 const Parser = require('rss-parser');
-const parser = new Parser({ timeout: 10000 });
+const parser = new Parser({ timeout: 4500 });
 
 // ─── HELPER ──────────────────────────────────────────────────────────────────
 function fmt(num, decimals = 2) {
@@ -30,7 +30,7 @@ async function yahooQuote(ticker) {
         const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1d&range=5d`;
         const resp = await axios.get(url, {
             headers: { 'User-Agent': 'Mozilla/5.0 (compatible; MarketBot/2.0)' },
-            timeout: 10000
+            timeout: 4500
         });
         const result = resp.data?.chart?.result?.[0];
         if (!result) return null;
@@ -54,8 +54,8 @@ async function getNewsData() {
         const [ihsg, bbca, btcResp, fngResp, newsResults, globalNews, cnnGuardianNews] = await Promise.allSettled([
             yahooQuote('^JKSE'),
             yahooQuote('BBCA.JK'),
-            axios.get('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true', { timeout: 10000 }),
-            axios.get('https://api.alternative.me/fng/?limit=1', { timeout: 8000 }),
+            axios.get('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true', { timeout: 4500 }),
+            axios.get('https://api.alternative.me/fng/?limit=1', { timeout: 4500 }),
             Promise.all([
                 parser.parseURL('https://www.cnbcindonesia.com/news/rss').catch(() => ({ items: [] })),
                 parser.parseURL('https://feed.bisnis.com/biz/home/articles/rss').catch(() => ({ items: [] }))
