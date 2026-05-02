@@ -147,8 +147,22 @@ async function getNewsData() {
         let hasNews = false;
         if (newsResults.status === 'fulfilled') {
             const allItems = [];
-            newsResults.value.forEach(r => { if (r.items) allItems.push(...r.items.slice(0, 5)); });
-            const top10 = allItems.slice(0, 10);
+            newsResults.value.forEach(r => { if (r.items) allItems.push(...r.items.slice(0, 15)); });
+            allItems.sort((a, b) => new Date(b.pubDate || b.isoDate || 0) - new Date(a.pubDate || a.isoDate || 0));
+            
+            const uniqueItems = [];
+            const seen = new Set();
+            for (const item of allItems) {
+                if (item.title) {
+                    const key = item.title.toLowerCase().substring(0, 40);
+                    if (!seen.has(key)) {
+                        seen.add(key);
+                        uniqueItems.push(item);
+                    }
+                }
+            }
+            
+            const top10 = uniqueItems.slice(0, 10);
             if (top10.length > 0) {
                 hasNews = true;
                 top10.forEach((item, i) => {
@@ -165,8 +179,22 @@ async function getNewsData() {
         let hasGlobalNews = false;
         if (cnnGuardianNews && cnnGuardianNews.status === 'fulfilled') {
             const allGlobalItems = [];
-            cnnGuardianNews.value.forEach(r => { if (r.items) allGlobalItems.push(...r.items.slice(0, 3)); });
-            const top10Global = allGlobalItems.slice(0, 10);
+            cnnGuardianNews.value.forEach(r => { if (r.items) allGlobalItems.push(...r.items.slice(0, 15)); });
+            allGlobalItems.sort((a, b) => new Date(b.pubDate || b.isoDate || 0) - new Date(a.pubDate || a.isoDate || 0));
+            
+            const uniqueGlobalItems = [];
+            const seenGlobal = new Set();
+            for (const item of allGlobalItems) {
+                if (item.title) {
+                    const key = item.title.toLowerCase().substring(0, 40);
+                    if (!seenGlobal.has(key)) {
+                        seenGlobal.add(key);
+                        uniqueGlobalItems.push(item);
+                    }
+                }
+            }
+            
+            const top10Global = uniqueGlobalItems.slice(0, 10);
             if (top10Global.length > 0) {
                 hasGlobalNews = true;
                 top10Global.forEach((item, i) => {
