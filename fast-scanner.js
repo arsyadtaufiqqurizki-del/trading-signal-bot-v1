@@ -122,7 +122,17 @@ async function fastScan() {
         const results = await Promise.allSettled(PRO_PAIRS.map(p => analyzeProAsset(p)));
         const valid = results.filter(r => r.status === 'fulfilled' && r.value !== null).map(r => r.value);
 
-        if (valid.length === 0) return await analyzeProAsset(PRO_PAIRS[0]);
+        if (valid.length === 0) {
+            // Try BTC as a last resort, but if that also fails, use the hardcoded fallback
+            const btcSignal = await analyzeProAsset(PRO_PAIRS[0]);
+            if (btcSignal) return btcSignal;
+            
+            return {
+                pair: 'BTC/USDT', direction: 'LONG', price: 60000, sl: 59000, tp: 62000,
+                rr: 2.0, score: 1, factors: ['Fallback: API Timeout'], rsi: 50,
+                trend1h: 'RANGING', trend15m: 'UP', marketCondition: 'Volatile', change24h: 0
+            };
+        }
 
         valid.sort((a, b) => b.score - a.score);
         return valid[0];
@@ -130,7 +140,7 @@ async function fastScan() {
         console.error('[FastScan] Critical Error:', err.message);
         return {
             pair: 'BTC/USDT', direction: 'LONG', price: 60000, sl: 59000, tp: 62000,
-            rr: 2.0, score: 1, factors: ['Fallback: Data Error'], rsi: 50,
+            rr: 2.0, score: 1, factors: ['Fallback: Critical Error'], rsi: 50,
             trend1h: 'RANGING', trend15m: 'UP', marketCondition: 'Volatile', change24h: 0
         };
     }
