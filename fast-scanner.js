@@ -148,21 +148,29 @@ async function analyzeProAsset(symbol) {
  */
 async function fastScan() {
     try {
-        // 1. Ambil semua ticker untuk cari top 50 volume
+        // 1. Ambil semua ticker untuk cari top 20 volume (dikurangi dari 50 agar tidak rate limit)
         const allTickers = await getAllTickers();
         
         // Filter hanya USDT pairs dan sort by volume
         const topPairs = allTickers
             .filter(t => t.symbol.endsWith('USDT'))
             .sort((a, b) => b.quoteVolume - a.quoteVolume)
-            .slice(0, 50);
+            .slice(0, 20);
 
-        // 2. Analisis Pro untuk top 50 (diproses paralel dengan limit)
-        const results = await Promise.allSettled(topPairs.map(p => analyzeProAsset(p.symbol)));
-
-        const valid = results
-            .filter(r => r.status === 'fulfilled' && r.value !== null)
-            .map(r => r.value);
+        // 2. Analisis Pro menggunakan Batch Processing untuk menghindari Rate Limit Binance
+        const valid = [];
+        const batchSize = 5; // Proses 5 koin per batch
+        
+        for (let i = 0; i < topPairs.length; i += batchSize) {
+            const batch = topPairs.slice(i, i + batchSize);
+            const results = await Promise.allSettled(batch.map(p => analyzeProAsset(p.symbol)));
+            
+            const fulfilled = results
+                .filter(r => r.status === 'fulfilled' && r.value !== null)
+                .map(r => r.value);
+            
+            valid.push(...fulfilled);
+        }
 
         if (valid.length === 0) {
             // Fallback ke BTC jika semua gagal
