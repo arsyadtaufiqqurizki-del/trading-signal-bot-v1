@@ -20,6 +20,16 @@ async function getTicker(symbol) {
   return { price: +data.lastPrice, change24h: +data.priceChangePercent, volume: +data.quoteVolume };
 }
 
+async function getAllTickers() {
+  const { data } = await axios.get(`${BINANCE}/ticker/24hr`, { timeout: 15000 });
+  return data.map(t => ({
+    symbol: t.symbol,
+    lastPrice: +t.lastPrice,
+    priceChangePercent: +t.priceChangePercent,
+    quoteVolume: +t.quoteVolume
+  }));
+}
+
 async function getFundingRate(symbol) {
   try {
     const { data } = await axios.get('https://fapi.binance.com/fapi/v1/fundingRate', {
@@ -38,4 +48,4 @@ async function getOpenInterest(symbol) {
   } catch { return null; }
 }
 
-module.exports = { getKlines, getTicker, getFundingRate, getOpenInterest };
+module.exports = { getKlines, getTicker, getAllTickers, getFundingRate, getOpenInterest };

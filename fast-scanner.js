@@ -1,194 +1,187 @@
 'use strict';
-const { getKlines, getTicker } = require('./binance');
+const { getKlines, getTicker, getAllTickers } = require('./binance');
 const { calcEMA, calcRSI, calcATR, detectStructure } = require('./indicators');
 const { fmt } = require('./utils');
 
-// 9 priority pairs sesuai request
-const FAST_PAIRS = [
-  { symbol: 'BTCUSDT',  name: 'BTC/USDT',  priority: 1 },
-  { symbol: 'ETHUSDT',  name: 'ETH/USDT',  priority: 2 },
-  { symbol: 'SOLUSDT',  name: 'SOL/USDT',  priority: 3 },
-  { symbol: 'HYPEUSDT', name: 'HYPE/USDT', priority: 4 },
-  { symbol: 'TAOUSDT',  name: 'TAO/USDT',  priority: 5 },
-  { symbol: 'DOGEUSDT', name: 'DOGE/USDT', priority: 6 },
-  { symbol: 'SUIUSDT',  name: 'SUI/USDT',  priority: 7 },
-  { symbol: 'BNBUSDT',  name: 'BNB/USDT',  priority: 8 },
-  { symbol: 'XRPUSDT',  name: 'XRP/USDT',  priority: 9 },
-];
-
 /**
- * Hitung skor setup sederhana untuk pair tertentu.
- * Rules lebih longgar — minimal 1 indikator cukup.
- * Selalu return signal (fallback ke best available).
+ * Deteksi pola candlestick dasar
  */
-async function fastAnalyzeAsset(pair) {
-  try {
-    const [candles1h, ticker] = await Promise.all([
-      getKlines(pair.symbol, '1h', 100),
-      getTicker(pair.symbol),
-    ]);
-
-    if (!candles1h || candles1h.length < 30) return null;
-
-    const closes = candles1h.map(c => c.close);
-    const price   = closes[closes.length - 1];
-
-    // ── Indikator 1: EMA 20 & 50 ───────────────────────────────────────────
-    const ema20arr = calcEMA(closes, 20);
-    const ema50arr = calcEMA(closes, 50);
-    const ema20 = ema20arr[ema20arr.length - 1];
-    const ema50 = ema50arr[ema50arr.length - 1];
-
-    // ── Indikator 2: RSI 14 ────────────────────────────────────────────────
-    const rsiArr = calcRSI(closes, 14);
-    const rsi    = rsiArr[rsiArr.length - 1];
-
-    // ── Indikator 3: ATR (untuk SL) ────────────────────────────────────────
-    const atr = calcATR(candles1h, 14);
-
-    // ── Market Structure Sederhana ─────────────────────────────────────────
-    const struct = detectStructure(candles1h);
-    const trend  = struct.trend; // UPTREND / DOWNTREND / RANGING
-
-    // ── Momentum Candle (3 candle terakhir) ────────────────────────────────
-    const last3    = candles1h.slice(-3);
-    const bullCandles = last3.filter(c => c.close > c.open).length;
-    const bearCandles = last3.filter(c => c.close < c.open).length;
-
-    // ── Scoring (fleksibel, min 1) ─────────────────────────────────────────
-    let longScore = 0, shortScore = 0;
-    const longFactors = [], shortFactors = [];
-
-    // EMA alignment
-    if (price > ema20 && ema20 > ema50) {
-      longScore += 2; longFactors.push('Price di atas EMA20 > EMA50');
-    } else if (price < ema20 && ema20 < ema50) {
-      shortScore += 2; shortFactors.push('Price di bawah EMA20 < EMA50');
-    } else if (price > ema20) {
-      longScore++;  longFactors.push('Price di atas EMA20');
-    } else if (price < ema20) {
-      shortScore++; shortFactors.push('Price di bawah EMA20');
+function detectCandlePattern(candles) {
+    if (candles.length < 2) return null;
+    const last = candles[candles.length - 1];
+    const prev = candles[candles.length - 2];
+    
+    const bodySize = Math.abs(last.close - last.open);
+    const prevBodySize = Math.abs(prev.close - prev.open);
+    
+    // Bullish Engulfing
+    if (prev.close < prev.open && last.close > last.open && 
+        last.open <= prev.close && last.close >= prev.open) {
+        return 'BULLISH_ENGULFING';
     }
-
-    // RSI
-    if (rsi !== undefined) {
-      if (rsi < 35) { longScore += 2;  longFactors.push(`RSI Oversold (${fmt(rsi,1)})`); }
-      else if (rsi < 45) { longScore++; longFactors.push(`RSI Approaching Oversold (${fmt(rsi,1)})`); }
-      else if (rsi > 65) { shortScore += 2; shortFactors.push(`RSI Overbought (${fmt(rsi,1)})`); }
-      else if (rsi > 55) { shortScore++;    shortFactors.push(`RSI Approaching Overbought (${fmt(rsi,1)})`); }
+    
+    // Bearish Engulfing
+    if (prev.close > prev.open && last.close < last.open && 
+        last.open <= prev.close && last.close >= prev.open) {
+        return 'BEARISH_ENGULFING';
     }
-
-    // Market structure
-    if (trend === 'UPTREND')   { longScore++;  longFactors.push('Uptrend (HH-HL)'); }
-    if (trend === 'DOWNTREND') { shortScore++; shortFactors.push('Downtrend (LH-LL)'); }
-
-    // Candle momentum
-    if (bullCandles >= 2) { longScore++;  longFactors.push('Bullish candle momentum'); }
-    if (bearCandles >= 2) { shortScore++; shortFactors.push('Bearish candle momentum'); }
-
-    // 24h change context
-    const change24h = ticker ? ticker.change24h : 0;
-    if (change24h > 2)  { longScore++;  longFactors.push(`24h +${fmt(change24h,1)}% momentum`); }
-    if (change24h < -2) { shortScore++; shortFactors.push(`24h ${fmt(change24h,1)}% weakness`); }
-
-    // ── Tentukan direction ─────────────────────────────────────────────────
-    const direction = longScore >= shortScore ? 'LONG' : 'SHORT';
-    const score     = direction === 'LONG' ? longScore : shortScore;
-    const factors   = direction === 'LONG' ? longFactors : shortFactors;
-
-    // ── Kalkulasi Entry / SL / TP ─────────────────────────────────────────
-    // ATR multiplier lebih flexible: SL 1.2x ATR, TP1 1.8x, TP2 2.5x ATR
-    const atrMult = atr || price * 0.012; // fallback 1.2% jika ATR gagal
-    let sl, tp, marketCondition;
-
-    if (direction === 'LONG') {
-      sl = price - atrMult * 1.3;
-      tp = price + atrMult * 2.0;
-    } else {
-      sl = price + atrMult * 1.3;
-      tp = price - atrMult * 2.0;
-    }
-
-    // Market condition
-    const atrPct = (atrMult / price) * 100;
-    if (atrPct > 3)        marketCondition = 'Volatile';
-    else if (trend !== 'RANGING') marketCondition = 'Trending';
-    else                   marketCondition = 'Ranging';
-
-    const risk   = Math.abs(price - sl);
-    const reward = Math.abs(tp - price);
-    const rr     = risk > 0 ? parseFloat((reward / risk).toFixed(2)) : 1.5;
-
-    return {
-      pair: pair.name,
-      priority: pair.priority,
-      direction,
-      price,
-      sl,
-      tp,
-      rr,
-      score,
-      factors,
-      rsi,
-      trend,
-      marketCondition,
-      change24h: change24h || 0,
-      atr: atrMult,
-    };
-  } catch (err) {
-    console.error(`[FastScanner] Error on ${pair.symbol}:`, err.message);
+    
+    // Hammer / Pin Bar (Sederhana)
+    const lowerWick = Math.min(last.open, last.close) - last.low;
+    const upperWick = last.high - Math.max(last.open, last.close);
+    if (lowerWick > bodySize * 2 && upperWick < bodySize) return 'HAMMER';
+    if (upperWick > bodySize * 2 && lowerWick < bodySize) return 'SHOOTING_STAR';
+    
     return null;
-  }
 }
 
 /**
- * Scan semua 9 pair, pilih 1 sinyal terbaik.
- * SELALU return sinyal — jika semua gagal, gunakan BTC sebagai fallback.
+ * Analisis mendalam untuk satu aset menggunakan Multi-Timeframe
+ */
+async function analyzeProAsset(symbol) {
+    try {
+        // Fetch data untuk 1h (Trend) dan 15m (Entry)
+        const [candles1h, candles15m, ticker] = await Promise.all([
+            getKlines(symbol, '1h', 100),
+            getKlines(symbol, '15m', 100),
+            getTicker(symbol),
+        ]);
+
+        if (!candles1h || candles1h.length < 30 || !candles15m || candles15m.length < 30) return null;
+
+        const close1h = candles1h[candles1h.length - 1].close;
+        const close15m = candles15m[candles15m.length - 1].close;
+
+        // --- Analisis Timeframe 1h (TREND) ---
+        const ema20_1h = calcEMA(candles1h.map(c => c.close), 20).pop();
+        const ema50_1h = calcEMA(candles1h.map(c => c.close), 50).pop();
+        const struct1h = detectStructure(candles1h);
+        const trend1h = struct1h.trend; // UPTREND / DOWNTREND / RANGING
+
+        // --- Analisis Timeframe 15m (ENTRY/MOMENTUM) ---
+        const rsi15m = calcRSI(candles15m.map(c => c.close), 14).pop();
+        const candlePattern15m = detectCandlePattern(candles15m);
+        const ema20_15m = calcEMA(candles15m.map(c => c.close), 20).pop();
+
+        // --- SCORING SYSTEM ---
+        let longScore = 0, shortScore = 0;
+        const longFactors = [], shortFactors = [];
+
+        // 1. Trend Alignment (Bobot Tinggi)
+        if (trend1h === 'UPTREND' && close15m > ema20_15m) {
+            longScore += 3; longFactors.push('Multi-TF Alignment: Bullish');
+        } else if (trend1h === 'DOWNTREND' && close15m < ema20_15m) {
+            shortScore += 3; shortFactors.push('Multi-TF Alignment: Bearish');
+        }
+
+        // 2. EMA Alignment 1h
+        if (ema20_1h > ema50_1h && close1h > ema20_1h) {
+            longScore += 2; longFactors.push('Strong Trend 1h: Bullish');
+        } else if (ema20_1h < ema50_1h && close1h < ema20_1h) {
+            shortScore += 2; shortFactors.push('Strong Trend 1h: Bearish');
+        }
+
+        // 3. RSI 15m (Momentum)
+        if (rsi15m !== undefined) {
+            if (rsi15m < 35) { longScore += 2; longFactors.push(`Oversold 15m (RSI ${fmt(rsi15m,1)})`); }
+            else if (rsi15m > 65) { shortScore += 2; shortFactors.push(`Overbought 15m (RSI ${fmt(rsi15m,1)})`); }
+        }
+
+        // 4. Candle Pattern 15m
+        if (candlePattern15m === 'BULLISH_ENGULFING' || candlePattern15m === 'HAMMER') {
+            longScore += 2; longFactors.push(`Pattern 15m: ${candlePattern15m}`);
+        } else if (candlePattern15m === 'BEARISH_ENGULFING' || candlePattern15m === 'SHOOTING_STAR') {
+            shortScore += 2; shortFactors.push(`Pattern 15m: ${candlePattern15m}`);
+        }
+
+        // 5. Volume/24h Momentum
+        const change24h = ticker ? ticker.change24h : 0;
+        if (change24h > 3) { longScore += 1; longFactors.push('High 24h Bullish Momentum'); }
+        if (change24h < -3) { shortScore += 1; shortFactors.push('High 24h Bearish Momentum'); }
+
+        // --- Penentuan Direction ---
+        const direction = longScore >= shortScore ? 'LONG' : 'SHORT';
+        const finalScore = direction === 'LONG' ? longScore : shortScore;
+        const factors = direction === 'LONG' ? longFactors : shortFactors;
+
+        // --- Kalkulasi TP/SL (Berdasarkan ATR 15m) ---
+        const atr15m = calcATR(candles15m, 14);
+        const price = close15m;
+        let sl, tp;
+
+        if (direction === 'LONG') {
+            sl = price - (atr15m * 1.5);
+            tp = price + (atr15m * 2.5);
+        } else {
+            sl = price + (atr15m * 1.5);
+            tp = price - (atr15m * 2.5);
+        }
+
+        const risk = Math.abs(price - sl);
+        const reward = Math.abs(tp - price);
+        const rr = risk > 0 ? parseFloat((reward / risk).toFixed(2)) : 1.6;
+
+        return {
+            symbol,
+            pair: symbol.replace('USDT', '/USDT'),
+            direction,
+            price,
+            sl,
+            tp,
+            rr,
+            score: finalScore,
+            factors,
+            rsi: rsi15m,
+            trend1h: trend1h,
+            trend15m: close15m > ema20_15m ? 'UP' : 'DOWN',
+            marketCondition: (atr15m / price * 100) > 2 ? 'Volatile' : 'Trending',
+            change24h: change24h || 0
+        };
+    } catch (err) {
+        console.error(`[ProScanner] Error on ${symbol}:`, err.message);
+        return null;
+    }
+}
+
+/**
+ * Scan dinamis: Top 50 Volume -> Analisis Pro -> Pilih 1 Terbaik
  */
 async function fastScan() {
-  const results = await Promise.allSettled(FAST_PAIRS.map(p => fastAnalyzeAsset(p)));
+    try {
+        // 1. Ambil semua ticker untuk cari top 50 volume
+        const allTickers = await getAllTickers();
+        
+        // Filter hanya USDT pairs dan sort by volume
+        const topPairs = allTickers
+            .filter(t => t.symbol.endsWith('USDT'))
+            .sort((a, b) => b.quoteVolume - a.quoteVolume)
+            .slice(0, 50);
 
-  const valid = results
-    .filter(r => r.status === 'fulfilled' && r.value !== null)
-    .map(r => r.value);
+        // 2. Analisis Pro untuk top 50 (diproses paralel dengan limit)
+        const results = await Promise.allSettled(topPairs.map(p => analyzeProAsset(p.symbol)));
 
-  if (valid.length === 0) {
-    // Fallback: buat sinyal BTC darurat dari ticker saja
-    return await buildFallbackSignal();
-  }
+        const valid = results
+            .filter(r => r.status === 'fulfilled' && r.value !== null)
+            .map(r => r.value);
 
-  // Sort: score tertinggi dulu, tie-break by priority
-  valid.sort((a, b) => b.score - a.score || a.priority - b.priority);
+        if (valid.length === 0) {
+            // Fallback ke BTC jika semua gagal
+            return await analyzeProAsset('BTCUSDT');
+        }
 
-  return valid[0]; // Selalu 1 sinyal terbaik
-}
+        // Sort by score tertinggi
+        valid.sort((a, b) => b.score - a.score);
 
-/**
- * Fallback absolut — jika semua API timeout, pakai BTC dan asumsikan setup netral.
- */
-async function buildFallbackSignal() {
-  try {
-    const ticker = await getTicker('BTCUSDT');
-    const price  = ticker.price || 60000;
-    const atr    = price * 0.012;
-    const direction = ticker.change24h >= 0 ? 'LONG' : 'SHORT';
-    const sl  = direction === 'LONG' ? price - atr * 1.3 : price + atr * 1.3;
-    const tp  = direction === 'LONG' ? price + atr * 2.0 : price - atr * 2.0;
-    return {
-      pair: 'BTC/USDT', priority: 1, direction, price, sl, tp,
-      rr: 1.54, score: 1,
-      factors: ['Price action sederhana (24h momentum)'],
-      rsi: null, trend: 'RANGING', marketCondition: 'Volatile',
-      change24h: ticker.change24h || 0, atr,
-    };
-  } catch {
-    const price = 60000, atr = 720;
-    return {
-      pair: 'BTC/USDT', priority: 1, direction: 'LONG', price, sl: price - atr * 1.3, tp: price + atr * 2.0,
-      rr: 1.54, score: 1, factors: ['Fallback signal — data terbatas'],
-      rsi: null, trend: 'RANGING', marketCondition: 'Volatile', change24h: 0, atr,
-    };
-  }
+        return valid[0];
+    } catch (err) {
+        console.error('[FastScan] Critical Error:', err.message);
+        // Fallback absolut
+        return {
+            pair: 'BTC/USDT', direction: 'LONG', price: 60000, sl: 59000, tp: 62000,
+            rr: 2.0, score: 1, factors: ['Fallback: Data Error'], rsi: 50,
+            trend1h: 'RANGING', trend15m: 'UP', marketCondition: 'Volatile', change24h: 0
+        };
+    }
 }
 
 module.exports = { fastScan };
