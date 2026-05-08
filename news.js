@@ -1,6 +1,10 @@
 const axios = require('axios');
 const Parser = require('rss-parser');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 const parser = new Parser({ timeout: 10000 });
+
+// Initialize Gemini AI
+const genAI = process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) : null;
 
 // ─── HELPER ──────────────────────────────────────────────────────────────────
 function fmt(num, decimals = 2) {
@@ -23,6 +27,25 @@ function arrow(change) {
 function changeSign(change) {
     if (change == null || isNaN(change)) return '±0,00';
     return (change >= 0 ? '+' : '') + fmt(change) + '%';
+}
+
+async function summarizeNewsWithAI(headlines) {
+    if (!genAI) return null;
+    try {
+        const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+        const prompt = `Analisis headline berita ekonomi global berikut dan berikan ringkasan singkat (max 3 kalimat) dalam Bahasa Indonesia tentang sentimen pasar saat ini (Bullish, Bearish, atau Neutral) dan alasan utamanya.
+        
+        Berita:
+        ${headlines.join('\n')}
+        
+        Format output: [Sentimen] - [Ringkasan]`;
+        
+        const result = await model.generateContent(prompt);
+        return result.response.text();
+    } catch (e) {
+        console.error('AI Summary Error:', e);
+        return null;
+    }
 }
 
 async function yahooQuote(ticker) {
@@ -62,7 +85,8 @@ async function getNewsData() {
             ]),
             Promise.all([
                 parser.parseURL('http://feeds.bbci.co.uk/news/business/rss.xml').catch(() => ({ items: [] })),
-                parser.parseURL('https://rss.nytimes.com/services/xml/rss/nyt/Economy.xml').catch(() => ({ items: [] }))
+                parser.parseURL('https://rss.nytimes.com/services/xml/rss/nyt/Economy.xml').catch(() => ({ items: [] })),
+                parser.parseURL('https://www.cnbc.com/id/100003114/device/rss/rss.html').catch(() => ({ items: [] }))
             ])
         ]);
 
@@ -150,17 +174,35 @@ async function getNewsData() {
         // --- SEKSI 5: MAKRO GLOBAL ---
         lines.push(`\n<b>🌍 KONDISI MAKRO GLOBAL</b>`);
         if (globalNews.status === 'fulfilled') {
-            const headlines = globalNews.value.flatMap(r => r.items).map(i => i.title.toLowerCase()).join(' ');
-            let riskMode = 'Netral ⚪', riskDesc = 'Pasar menunggu katalis dominan.';
-            if (headlines.includes('inflation') || headlines.includes('cpi')) riskDesc = 'Inflasi masih menjadi perhatian utama bank sentral.';
-            if (headlines.includes('war') || headlines.includes('conflict')) { riskMode = 'Risk-Off 🔴'; riskDesc = 'Ketegangan geopolitik meningkatkan ketidakpastian.'; }
-            lines.push(`⚡ Mode Pasar: <b>${riskMode}</b>`);
-            lines.push(`💬 <i>${riskDesc}</i>`);
+            const allGlobalItems = globalNews.value.flatMap(r => r.items).slice(0, 10);
+            const headlines = allGlobalItems.map(i => i.title).join('\n');
+            
+            // AI Summary
+            const aiSummary = await summarizeNewsWithAI(allGlobalItems.map(i => i.title));
+            if (aiSummary) {
+                lines.push(`🤖 <b>AI Analysis:</b>\n<i>${aiSummary}</i>`);
+            } else {
+                // Fallback ke analisis kata kunci manual jika AI gagal
+                let riskMode = 'Netral ⚪', riskDesc = 'Pasar menunggu katalis dominan.';
+                const lowerHeadlines = headlines.toLowerCase();
+                if (lowerHeadlines.includes('inflation') || lowerHeadlines.includes('cpi')) riskDesc = 'Inflasi masih menjadi perhatian utama bank sentral.';
+                if (lowerHeadlines.includes('war') || lowerHeadlines.includes('conflict')) { riskMode = 'Risk-Off 🔴'; riskDesc = 'Ketegangan geopolitik meningkatkan ketidakpastian.'; }
+                lines.push(`⚡ Mode Pasar: <b>${riskMode}</b>`);
+                lines.push(`💬 <i>${riskDesc}</i>`);
+            }
+
+            lines.push(`\n<b>Top Global Headlines:</b>`);
+            allGlobalItems.slice(0, 3).forEach((item, i) => {
+                lines.push(`\n${i + 1}. <b>${item.title.trim()}</b>`);
+                lines.push(`🔗 <a href="${item.link}">Read More</a>`);
+            });
+        } else {
+            lines.push(`⚠️ Data Makro Global tidak dapat ditarik.`);
         }
         lines.push(sep);
 
         lines.push(`\n⚠️ <i>Laporan informatif, bukan rekomendasi investasi.</i>`);
-        lines.push(`🤖 <b>Market Intelligence System v2.0</b> (Tanpa AI)`);
+        lines.push(`🤖 <b>Market Intelligence System v2.0</b>`);
 
         return lines.join('\n');
 
