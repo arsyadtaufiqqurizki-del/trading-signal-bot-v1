@@ -27,39 +27,48 @@ class ContentGenerator {
       throw new Error('Gemini API Key is not configured. Please add GEMINI_API_KEY to your .env file.');
     }
 
-    try {
-      const model = this.genAI.getGenerativeModel({ model: 'gemini-pro' });
+    const modelsToTry = ['gemini-1.0-pro', 'gemini-1.5-flash', 'gemini-1.5-pro'];
+    let lastError = null;
 
-      const prompt = `
-        You are an expert Viral Marketer specializing in the Indonesian market (TikTok, Instagram Reels, and YouTube Shorts).
-        Your task is to create 3 different high-converting content hooks and short scripts for the keyword: "${keyword}".
+    for (const modelName of modelsToTry) {
+      try {
+        console.log(`[ContentGenerator] Attempting to use model: ${modelName}`);
+        const model = this.genAI.getGenerativeModel({ model: modelName });
 
-        For each angle, follow this strict structure:
-        1. Angle Name (e.g., FOMO, Pain Point, Curiosity)
-        2. Hook: A powerful opening sentence to stop the scroll (first 3 seconds).
-        3. Value: The core message or "meat" of the content.
-        4. CTA: A persuasive call to action.
+        const prompt = `
+          You are an expert Viral Marketer specializing in the Indonesian market (TikTok, Instagram Reels, and YouTube Shorts).
+          Your task is to create 3 different high-converting content hooks and short scripts for the keyword: "${keyword}".
 
-        Requirements:
-        - Use a mix of professional and catchy Indonesian (Bahasa Indonesia yang santai, modern, dan persuasif).
-        - Focus on psychological triggers.
-        - Ensure the hooks are bold and attention-grabbing.
-        - Format the output clearly using Markdown for Telegram.
+          For each angle, follow this strict structure:
+          1. Angle Name (e.g., FOMO, Pain Point, Curiosity)
+          2. Hook: A powerful opening sentence to stop the scroll (first 3 seconds).
+          3. Value: The core message or "meat" of the content.
+          4. CTA: A persuasive call to action.
 
-        Example Format:
-        Angle: [Name]
-        Hook: "[Sentence]"
-        Value: [Description]
-        CTA: "[Sentence]"
-      `;
+          Requirements:
+          - Use a mix of professional and catchy Indonesian (Bahasa Indonesia yang santai, modern, dan persuasif).
+          - Focus on psychological triggers.
+          - Ensure the hooks are bold and attention-grabbing.
+          - Format the output clearly using Markdown for Telegram.
 
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      return response.text();
-    } catch (error) {
-      console.error(`[ContentGenerator] Error generating content: ${error.message}`);
-      throw new Error(`AI failed to generate content: ${error.message}`);
+          Example Format:
+          Angle: [Name]
+          Hook: "[Sentence]"
+          Value: [Description]
+          CTA: "[Sentence]"
+        `;
+
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        return response.text();
+      } catch (error) {
+        console.error(`[ContentGenerator] Model ${modelName} failed: ${error.message}`);
+        lastError = error;
+        // Continue to the next model in the list
+      }
     }
+
+    throw new Error(`All attempted models failed. Last error: ${lastError?.message}`);
   }
 }
 
