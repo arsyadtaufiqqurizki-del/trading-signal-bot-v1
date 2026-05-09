@@ -27,8 +27,6 @@ class ContentGenerator {
     // Try multiple stable models as fallback, prioritizing llama-3-8b-instruct
     const modelsToTry = [
       'nousresearch/hermes-3-llama-3.1-405b:free', 
-      'google/gemini-pro-1.5', 
-      'google/gemini-pro', 
       'google/gemma-4-31b-it'
     ];
     let lastError = null;
