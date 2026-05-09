@@ -11,7 +11,9 @@ module.exports = async (req, res) => {
     const msg = req.body.message;
     if (msg && msg.text) {
       const chatId = msg.chat.id;
-      const text = msg.text;
+      const text = msg.text.trim();
+
+      console.log(`[Webhook Received] ChatID: ${chatId} | Text: ${text}`);
 
       if (text.startsWith('/start')) {
         await bot.sendMessage(chatId,
