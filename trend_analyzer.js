@@ -1,12 +1,12 @@
 'use strict';
 
 /**
- * TrendAnalyzer analyzes RSS articles to find keyword frequency.
- * It groups articles by keyword to determine if a topic is "Trending".
+ * TrendAnalyzer analyzes Google News articles to find keyword frequency in Indonesia.
  */
 class TrendAnalyzer {
   constructor() {
-    this.watchlist = ['AI Agent', 'Digital Marketing', 'Web3', 'Content Creator', 'TikTok Ads', 'AI', 'SEO', 'Social Media'];
+    // Updated watchlist for better relevance in the Indonesian market
+    this.watchlist = ['AI Agent', 'Digital Marketing', 'Web3', 'Content Creator', 'TikTok Ads', 'Shopee', 'Tokopedia', 'AI', 'SEO', 'KOL', 'Affiliate'];
   }
 
   /**
@@ -44,7 +44,6 @@ class TrendAnalyzer {
       });
     });
 
-    // Convert map to a sorted array of trends
     const trends = Object.keys(trendMap)
       .map(kw => ({
         keyword: kw,
@@ -60,30 +59,31 @@ class TrendAnalyzer {
     };
   }
 
-  /**
-   * Determines the buzz level based on occurrence count.
-   */
   determineStatus(count) {
-    if (count >= 4) return 'High Buzz';
-    if (count >= 2) return 'Medium Buzz';
-    return 'Low Buzz';
+    if (count >= 5) return 'Sangat Viral';
+    if (count >= 3) return 'Sedang Tren';
+    return 'Mulai Naik';
   }
 
   /**
-   * Generates a simple marketing insight based on the keyword.
+   * Generates marketing insights specific to the Indonesian market.
    */
   getInsight(keyword) {
     const insights = {
-      'AI Agent': 'Industri bergeser dari chatbot statis ke AI Agent otonom. Cocok untuk konten perbandingan efisiensi.',
-      'TikTok Ads': 'Algoritma TikTok semakin mengutamakan konten native. Buat konten yang tidak terlihat seperti iklan.',
-      'Digital Marketing': 'Tren omni-channel sedang naik. Fokus pada integrasi pengalaman user di berbagai platform.',
-      'Web3': 'Adopsi massal membutuhkan UX yang lebih simpel. Buat konten edukasi "Web3 untuk Pemula".',
-      'Content Creator': 'Ekonomi kreator kini fokus pada komunitas kecil (niche) daripada massa luas.',
-      'SEO': 'SGE (Search Generative Experience) mengubah cara orang mencari informasi. Optimasi untuk jawaban AI.',
-      'AI': 'Efisiensi produksi konten meningkat. Fokus pada "Kurasi Manusia" untuk menjaga kualitas.',
-      'Social Media': 'Video pendek masih mendominasi, namun durasi menengah mulai naik kembali.'
+      'AI Agent': 'Pasar Indonesia mulai melirik AI untuk CS otomatis. Fokus pada konten "Cara AI bantu UMKM".',
+      'TikTok Ads': 'TikTok Shop & Affiliate sangat kuat di ID. Buat konten optimasi konversi via Live Streaming.',
+      'Digital Marketing': 'Trend "Local Pride" sedang kuat. Integrasikan strategi marketing dengan nilai lokal.',
+      'Web3': 'Kripto masih populer di ID. Fokus pada edukasi keamanan aset dan utilitas nyata Web3.',
+      'Content Creator': 'Era "Nano-Influencer" lebih dipercaya di Indonesia. Saran: Kolaborasi dengan banyak kreator kecil.',
+      'SEO': 'Pencarian lokal (Local SEO) sangat penting untuk bisnis fisik di ID. Optimasi Google Maps/My Business.',
+      'AI': 'Adopsi AI untuk produktivitas kerja sedang meledak di kota besar. Buat tips "Kerja Cepat pakai AI".',
+      'Social Media': 'Interaksi di kolom komentar sangat tinggi di ID. Fokus pada strategi "Engagement First".',
+      'Shopee': 'Optimasi promo tanggal kembar (Double Day) adalah wajib untuk peningkatan sales di Indonesia.',
+      'Tokopedia': 'Fokus pada segmentasi pengguna yang mencari kualitas dan kepercayaan brand.',
+      'KOL': 'Pemilihan KOL yang memiliki persona "Relatable" lebih efektif daripada yang sekadar mewah.',
+      'Affiliate': 'Program affiliate berbasis komisi rendah namun volume tinggi sangat efektif untuk market ID.'
     };
-    return insights[keyword] || 'Topik ini sedang naik daun. Analisis kompetitor dan buat konten yang menjawab masalah user.';
+    return insights[keyword] || 'Topik ini sedang naik daun di Indonesia. Analisis kompetitor lokal dan buat konten yang relevan.';
   }
 }
 

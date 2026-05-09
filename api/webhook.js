@@ -28,39 +28,40 @@ module.exports = async (req, res) => {
       } else if (text.startsWith('/high')) {
         await runAnalysis(bot, chatId, false);
       } else if (text.startsWith('/trend')) {
-        await bot.sendMessage(chatId, '⏳ Sedang menganalisis tren industri via RSS Feeds...');
+        await bot.sendMessage(chatId, '⏳ Sedang menganalisis tren industri di Indonesia via Google News...');
         try {
           const socialScanner = require('../social_scanner');
           const trendAnalyzer = require('../trend_analyzer');
-
-          const articles = await socialScanner.scanAllFeeds();
+          
+          const watchlist = trendAnalyzer.watchlist;
+          const articles = await socialScanner.scanKeywords(watchlist);
           const { trends, activityCount } = trendAnalyzer.analyze(articles);
 
           if (trends.length === 0) {
-            let debugMsg = `📉 <b>SOCIAL TREND SCANNER</b>\n📅 ${new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' })}\n\n`;
-            debugMsg += `Tidak ditemukan lonjakan keyword signifikan hari ini.\n\n<b>Aktivitas Terdeteksi:</b>\n`;
-
+            let debugMsg = `📉 <b>INDONESIA TREND SCANNER</b>\n📅 ${new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' })}\n\n`;
+            debugMsg += `Tidak ditemukan lonjakan keyword signifikan di pasar Indonesia hari ini.\n\n<b>Aktivitas Terdeteksi:</b>\n`;
+            
             Object.entries(activityCount).forEach(([kw, count]) => {
               debugMsg += `• ${kw}: ${count} mentions\n`;
             });
             debugMsg += `\n<i>Saran: Coba cek kembali dalam 12 jam ke depan.</i>`;
             await bot.sendMessage(chatId, debugMsg, { parse_mode: 'HTML' });
           } else {
-            let reportMsg = `🚨 <b>SOCIAL TREND REPORT</b>\n📅 ${new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' })}\n\n`;
-
+            let reportMsg = `🇮🇩 <b>INDONESIA TREND REPORT</b>\n📅 ${new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' })}\n\n`;
+            
             trends.forEach(t => {
               reportMsg += `🔥 <b>TRENDING NOW: [${t.keyword}]</b>\n`;
-              reportMsg += `Status: <b>${t.status}</b> (${t.count} sumber)\n\n`;
+              reportMsg += `Status: <b>${t.status}</b> (${t.count} berita)\n\n`;
               reportMsg += `📰 <b>Headline Terbaru:</b>\n`;
-
+              
               t.articles.forEach(art => {
                 reportMsg += `• "${art.title}" — <b>${art.source}</b>\n🔗 <a href="${art.link}">Baca Artikel</a>\n\n`;
               });
-
-              reportMsg += `💡 <b>Marketing Insight:</b>\n${trendAnalyzer.getInsight(t.keyword)}\n`;
+              
+              reportMsg += `💡 <b>Marketing Insight (ID Market):</b>\n${trendAnalyzer.getInsight(t.keyword)}\n`;
               reportMsg += `--------------------------------------------\n\n`;
             });
-
+            
             await bot.sendMessage(chatId, reportMsg, { parse_mode: 'HTML', disable_web_page_preview: false });
           }
         } catch (e) {

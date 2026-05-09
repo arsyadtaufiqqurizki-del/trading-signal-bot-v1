@@ -3,41 +3,44 @@
 const Parser = require('rss-parser');
 
 /**
- * SocialScanner now uses RSS feeds to track industry trends.
- * It fetches latest articles from trusted digital marketing and tech sources.
+ * SocialScanner now focuses on the Indonesia region using Google News RSS.
+ * It dynamically generates search queries for each keyword to find relevant local news.
  */
 class SocialScanner {
   constructor() {
     this.parser = new Parser();
-    this.feeds = [
-      { name: 'Social Media Today', url: 'https://www.socialmediatoday.com/feeds/news/' },
-      { name: 'Search Engine Journal', url: 'https://www.searchenginejournal.com/feed/' },
-      { name: 'TechCrunch', url: 'https://techcrunch.com/feed/' },
-      { name: 'Marketing Brew', url: 'https://www.morningbrew.com/marketing/feed' },
-      { name: 'The Verge', url: 'https://www.theverge.com/rss/index.xml' }
-    ];
+    this.baseUrl = 'https://news.google.com/rss/search';
+    this.params = {
+      hl: 'id',
+      gl: 'ID',
+      ceid: 'ID:id'
+    };
   }
 
   /**
-   * Fetches and aggregates articles from all configured RSS feeds.
-   * @returns {Promise<Array>} - A list of all recent articles.
+   * Fetches articles from Google News for a specific set of keywords.
+   * @param {string[]} keywords - List of keywords to search for in Indonesia.
+   * @returns {Promise<Array>} - A list of all found articles.
    */
-  async scanAllFeeds() {
+  async scanKeywords(keywords) {
     const allArticles = [];
     
     try {
-      const fetchPromises = this.feeds.map(async (feed) => {
+      const fetchPromises = keywords.map(async (keyword) => {
         try {
-          const feedData = await this.parser.parseURL(feed.url);
+          const url = `${this.baseUrl}?q=${encodeURIComponent(keyword)}&hl=${this.params.hl}&gl=${this.params.gl}&ceid=${this.params.ceid}`;
+          const feedData = await this.parser.parseURL(url);
+          
           return feedData.items.map(item => ({
             title: item.title,
             link: item.link,
             content: item.contentSnippet || item.content || '',
-            source: feed.name,
-            pubDate: item.pubDate
+            source: item.source ? item.source.title : 'Google News ID',
+            pubDate: item.pubDate,
+            matchedKeyword: keyword
           }));
         } catch (e) {
-          console.error(`[SocialScanner] Failed to fetch ${feed.name}: ${e.message}`);
+          console.error(`[SocialScanner] Failed to fetch news for ${keyword}: ${e.message}`);
           return [];
         }
       });
@@ -45,7 +48,7 @@ class SocialScanner {
       const results = await Promise.all(fetchPromises);
       return results.flat();
     } catch (error) {
-      console.error(`[SocialScanner] Critical error scanning feeds: ${error.message}`);
+      console.error(`[SocialScanner] Critical error scanning Google News ID: ${error.message}`);
       return [];
     }
   }
