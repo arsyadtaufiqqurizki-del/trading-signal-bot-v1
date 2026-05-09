@@ -74,7 +74,8 @@ module.exports = async (req, res) => {
       } else if (text.startsWith('/create')) {
         const args = text.split(' ').slice(1).join(' ');
         if (!args) {
-          await bot.sendMessage(chatId, '❓ <b>Keyword tidak ditemukan!</b>\n\nSilakan masukkan keyword setelah command /create.\nContoh: <code>/create AI Agent</code>', { parse_mode: 'HTML' });
+          console.log(`[SPAM DETECTED] Source ChatID: ${chatId} | Text: ${text} | Full Payload: ${JSON.stringify(msg)}`);
+          // We stop sending the error message to break the loop and stop the spam
           return;
         }
 
