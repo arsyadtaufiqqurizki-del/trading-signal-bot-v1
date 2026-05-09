@@ -57,7 +57,7 @@ module.exports = async (req, res) => {
           }
         } catch (e) {
           console.error(`[Trend Error] ${e.message}`);
-          await bot.sendMessage(chatId, '❌ Terjadi kesalahan saat menganalisis tren. Pastikan API Key terkonfigurasi dengan benar.');
+          await bot.sendMessage(chatId, `❌ <b>System Error:</b>\n<code>${e.message}</code>\n\nSilakan kirimkan pesan error ini kepada developer untuk diperbaiki.`, { parse_mode: 'HTML' });
         }
       } else if (text.startsWith('/news')) {
         await bot.sendMessage(chatId, '⏳ Sedang menarik berita terkini...');
