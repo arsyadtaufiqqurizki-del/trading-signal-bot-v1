@@ -115,3 +115,5 @@ module.exports = async (req, res) => {
   // Vercel Serverless harus memberikan response 200 ke Telegram API agar tidak terjadi timeout/retry.
   res.status(200).send('OK');
 };
+
+// Trigger Redeploy - Stable Version Restore
