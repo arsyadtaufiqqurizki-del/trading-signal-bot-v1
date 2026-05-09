@@ -1,20 +1,16 @@
 'use strict';
 
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const axios = require('axios');
 
 /**
- * ContentGenerator leverages Gemini AI to create viral content scripts.
- * It focuses on psychological triggers and the Indonesian social media landscape.
+ * ContentGenerator uses direct REST API calls to Gemini to avoid SDK versioning issues.
+ * This is the most stable way to ensure compatibility across different regions and API versions.
  */
 class ContentGenerator {
   constructor() {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      console.error('[ContentGenerator] GEMINI_API_KEY is missing in .env');
-      this.genAI = null;
-    } else {
-      this.genAI = new GoogleGenerativeAI(apiKey);
-    }
+    this.apiKey = process.env.GEMINI_API_KEY;
+    // We use v1beta as it's the most flexible, but we call it via direct REST
+    this.apiUrl = 'https://generativelanguage.googleapis.com/v1beta/models';
   }
 
   /**
@@ -23,52 +19,63 @@ class ContentGenerator {
    * @returns {Promise<string>} - The formatted scripts from AI.
    */
   async generateHooks(keyword) {
-    if (!this.genAI) {
-      throw new Error('Gemini API Key is not configured. Please add GEMINI_API_KEY to your .env file.');
+    if (!this.apiKey) {
+      throw new Error('GEMINI_API_KEY is missing in .env');
     }
 
-    const modelsToTry = ['gemini-1.0-pro', 'gemini-1.5-flash', 'gemini-1.5-pro'];
+    // We try the most stable models in order
+    const modelsToTry = ['gemini-1.5-flash', 'gemini-1.0-pro'];
     let lastError = null;
 
     for (const modelName of modelsToTry) {
       try {
-        console.log(`[ContentGenerator] Attempting to use model: ${modelName}`);
-        const model = this.genAI.getGenerativeModel({ model: modelName });
+        console.log(`[ContentGenerator] Attempting REST call to: ${modelName}`);
+        
+        const response = await axios.post(
+          `${this.apiUrl}/${modelName}:generateContent?key=${this.apiKey}`,
+          {
+            contents: [{
+              parts: [{
+                text: `
+                  You are an expert Viral Marketer specializing in the Indonesian market (TikTok, Instagram Reels, and YouTube Shorts).
+                  Your task is to create 3 different high-converting content hooks and short scripts for the keyword: "${keyword}".
 
-        const prompt = `
-          You are an expert Viral Marketer specializing in the Indonesian market (TikTok, Instagram Reels, and YouTube Shorts).
-          Your task is to create 3 different high-converting content hooks and short scripts for the keyword: "${keyword}".
+                  For each angle, follow this strict structure:
+                  1. Angle Name (e.g., FOMO, Pain Point, Curiosity)
+                  2. Hook: A powerful opening sentence to stop the scroll (first 3 seconds).
+                  3. Value: The core message or "meat" of the content.
+                  4. CTA: A persuasive call to action.
 
-          For each angle, follow this strict structure:
-          1. Angle Name (e.g., FOMO, Pain Point, Curiosity)
-          2. Hook: A powerful opening sentence to stop the scroll (first 3 seconds).
-          3. Value: The core message or "meat" of the content.
-          4. CTA: A persuasive call to action.
+                  Requirements:
+                  - Use a mix of professional and catchy Indonesian (Bahasa Indonesia yang santai, modern, dan persuasif).
+                  - Focus on psychological triggers.
+                  - Ensure the hooks are bold and attention-grabbing.
+                  - Format the output clearly using Markdown for Telegram.
 
-          Requirements:
-          - Use a mix of professional and catchy Indonesian (Bahasa Indonesia yang santai, modern, dan persuasif).
-          - Focus on psychological triggers.
-          - Ensure the hooks are bold and attention-grabbing.
-          - Format the output clearly using Markdown for Telegram.
+                  Example Format:
+                  Angle: [Name]
+                  Hook: "[Sentence]"
+                  Value: [Description]
+                  CTA: "[Sentence]"
+                `
+              }]
+            }]
+          },
+          { headers: { 'Content-Type': 'application/json' } }
+        );
 
-          Example Format:
-          Angle: [Name]
-          Hook: "[Sentence]"
-          Value: [Description]
-          CTA: "[Sentence]"
-        `;
+        // Extract text from Gemini REST response structure
+        const text = response.data.candidates[0].content.parts[0].text;
+        return text;
 
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        return response.text();
       } catch (error) {
-        console.error(`[ContentGenerator] Model ${modelName} failed: ${error.message}`);
-        lastError = error;
-        // Continue to the next model in the list
+        const errorMsg = error.response ? JSON.stringify(error.response.data) : error.message;
+        console.error(`[ContentGenerator] Model ${modelName} REST call failed: ${errorMsg}`);
+        lastError = errorMsg;
       }
     }
 
-    throw new Error(`All attempted models failed. Last error: ${lastError?.message}`);
+    throw new Error(`Direct API calls failed for all models. Last error: ${lastError}`);
   }
 }
 
