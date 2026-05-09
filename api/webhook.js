@@ -30,12 +30,12 @@ module.exports = async (req, res) => {
       } else if (text.startsWith('/trend')) {
         await bot.sendMessage(chatId, '⏳ Sedang memindai tren di X &amp; TikTok...');
         try {
-          const { scanAllPlatforms } = require('../social_scanner');
-          const { analyze } = require('../trend_analyzer');
+          const socialScanner = require('../social_scanner');
+          const trendAnalyzer = require('../trend_analyzer');
           
           const watchlist = ['AI Agent', 'Digital Marketing', 'Web3', 'Content Creator', 'TikTok Ads'];
-          const rawData = await scanAllPlatforms(watchlist);
-          const trends = analyze(rawData);
+          const rawData = await socialScanner.scanAllPlatforms(watchlist);
+          const trends = trendAnalyzer.analyze(rawData);
 
           if (trends.length === 0) {
             // DEBUG MODE: Show actual counts if no trend is found
