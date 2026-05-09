@@ -81,8 +81,12 @@ module.exports = async (req, res) => {
           const contentGenerator = require('../content_generator');
           const scripts = await contentGenerator.generateHooks(args);
           
-          // Clean up AI response to ensure it looks good in Telegram
-          const formattedScripts = scripts.replace(/#/g, '').replace(/\*\*/g, '<b>').replace(/\*/g, '•');
+          // Correctly handle bold text: replace pairs of **text** with <b>text</b>
+          let formattedScripts = scripts.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
+          // Then replace any remaining single asterisks with bullets
+          formattedScripts = formattedScripts.replace(/\*/g, '•');
+          // Finally, remove any remaining hash symbols
+          formattedScripts = formattedScripts.replace(/#/g, '');
           
           await bot.sendMessage(chatId, `🎬 <b>CONTENT STRATEGY: ${args}</b>\n\n${formattedScripts}`, { parse_mode: 'HTML' });
         } catch (e) {
