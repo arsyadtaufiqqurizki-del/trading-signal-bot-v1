@@ -47,22 +47,23 @@ module.exports = async (req, res) => {
             debugMsg += `\n<i>Saran: Coba cek kembali dalam 12 jam ke depan.</i>`;
             await bot.sendMessage(chatId, debugMsg, { parse_mode: 'HTML' });
           } else {
-            let reportMsg = `🇮🇩 <b>INDONESIA TREND REPORT</b>\n📅 ${new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' })}\n\n`;
+            // 1. Send Header First
+            await bot.sendMessage(chatId, `🇮🇩 <b>INDONESIA TREND REPORT</b>\n📅 ${new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' })}\n\n<i>Berikut adalah topik yang sedang naik daun:</i>`, { parse_mode: 'HTML' });
             
-            trends.forEach(t => {
-              reportMsg += `🔥 <b>TRENDING NOW: [${t.keyword}]</b>\n`;
-              reportMsg += `Status: <b>${t.status}</b> (${t.count} berita)\n\n`;
-              reportMsg += `📰 <b>Headline Terbaru:</b>\n`;
+            // 2. Send each trend as a separate message to avoid 'message too long' error
+            for (const t of trends) {
+              let trendMsg = `🔥 <b>TRENDING NOW: [${t.keyword}]</b>\n`;
+              trendMsg += `Status: <b>${t.status}</b> (${t.count} berita)\n\n`;
+              trendMsg += `📰 <b>Headline Terbaru:</b>\n`;
               
               t.articles.forEach(art => {
-                reportMsg += `• "${art.title}" — <b>${art.source}</b>\n🔗 <a href="${art.link}">Baca Artikel</a>\n\n`;
+                trendMsg += `• "${art.title}" — <b>${art.source}</b>\n🔗 <a href="${art.link}">Baca Artikel</a>\n\n`;
               });
               
-              reportMsg += `💡 <b>Marketing Insight (ID Market):</b>\n${trendAnalyzer.getInsight(t.keyword)}\n`;
-              reportMsg += `--------------------------------------------\n\n`;
-            });
-            
-            await bot.sendMessage(chatId, reportMsg, { parse_mode: 'HTML', disable_web_page_preview: false });
+              trendMsg += `💡 <b>Marketing Insight (ID Market):</b>\n${trendAnalyzer.getInsight(t.keyword)}`;
+              
+              await bot.sendMessage(chatId, trendMsg, { parse_mode: 'HTML', disable_web_page_preview: false });
+            }
           }
         } catch (e) {
           console.error(`[Trend Error] ${e.message}`);
