@@ -3,14 +3,15 @@
 const axios = require('axios');
 
 /**
- * ContentGenerator uses direct REST API calls to Gemini to avoid SDK versioning issues.
- * This is the most stable way to ensure compatibility across different regions and API versions.
+ * ContentGenerator uses OpenRouter AI to generate viral content scripts.
+ * OpenRouter provides a stable, unified interface for multiple high-end AI models.
  */
 class ContentGenerator {
   constructor() {
-    this.apiKey = process.env.GEMINI_API_KEY;
-    // We use v1beta as it's the most flexible, but we call it via direct REST
-    this.apiUrl = 'https://generativelanguage.googleapis.com/v1beta/models';
+    this.apiKey = process.env.OPENROUTER_API_KEY;
+    this.apiUrl = 'https://openrouter.ai/api/v1/chat/completions';
+    // Using gemini-flash-1.5 via OpenRouter for speed and quality
+    this.model = 'google/gemini-flash-1.5'; 
   }
 
   /**
@@ -20,62 +21,62 @@ class ContentGenerator {
    */
   async generateHooks(keyword) {
     if (!this.apiKey) {
-      throw new Error('GEMINI_API_KEY is missing in .env');
+      throw new Error('OPENROUTER_API_KEY is missing in .env');
     }
 
-    // We try the most stable models in order
-    const modelsToTry = ['gemini-1.5-flash', 'gemini-1.0-pro'];
-    let lastError = null;
+    try {
+      const response = await axios.post(
+        this.apiUrl,
+        {
+          model: this.model,
+          messages: [
+            {
+              role: 'system',
+              content: 'You are an expert Viral Marketer specializing in the Indonesian market (TikTok, Instagram Reels, and YouTube Shorts). You create high-converting content hooks and short scripts that stop the scroll and drive engagement.'
+            },
+            {
+              role: 'user',
+              content: `Create 3 different high-converting content hooks and short scripts for the keyword: "${keyword}".
 
-    for (const modelName of modelsToTry) {
-      try {
-        console.log(`[ContentGenerator] Attempting REST call to: ${modelName}`);
-        
-        const response = await axios.post(
-          `${this.apiUrl}/${modelName}:generateContent?key=${this.apiKey}`,
-          {
-            contents: [{
-              parts: [{
-                text: `
-                  You are an expert Viral Marketer specializing in the Indonesian market (TikTok, Instagram Reels, and YouTube Shorts).
-                  Your task is to create 3 different high-converting content hooks and short scripts for the keyword: "${keyword}".
+For each angle, follow this strict structure:
+1. Angle Name (e.g., FOMO, Pain Point, Curiosity)
+2. Hook: A powerful opening sentence to stop the scroll (first 3 seconds).
+3. Value: The core message or "meat" of the content.
+4. CTA: A persuasive call to action.
 
-                  For each angle, follow this strict structure:
-                  1. Angle Name (e.g., FOMO, Pain Point, Curiosity)
-                  2. Hook: A powerful opening sentence to stop the scroll (first 3 seconds).
-                  3. Value: The core message or "meat" of the content.
-                  4. CTA: A persuasive call to action.
+Requirements:
+- Use a mix of professional and catchy Indonesian (Bahasa Indonesia yang santai, modern, dan persuasif).
+- Focus on psychological triggers.
+- Ensure the hooks are bold and attention-grabbing.
+- Format the output clearly using Markdown for Telegram.
 
-                  Requirements:
-                  - Use a mix of professional and catchy Indonesian (Bahasa Indonesia yang santai, modern, dan persuasif).
-                  - Focus on psychological triggers.
-                  - Ensure the hooks are bold and attention-grabbing.
-                  - Format the output clearly using Markdown for Telegram.
+Example Format:
+Angle: [Name]
+Hook: "[Sentence]"
+Value: [Description]
+CTA: "[Sentence]"`
+            }
+          ],
+          temperature: 0.7
+        },
+        {
+          headers: {
+            'Authorization': `Bearer ${this.apiKey}`,
+            'Content-Type': 'application/json',
+            'HTTP-Referer': 'https://gemini-cli.vercel.app', // Required by some OpenRouter models
+            'X-Title': 'Gemini CLI Trend Bot'
+          }
+        }
+      );
 
-                  Example Format:
-                  Angle: [Name]
-                  Hook: "[Sentence]"
-                  Value: [Description]
-                  CTA: "[Sentence]"
-                `
-              }]
-            }]
-          },
-          { headers: { 'Content-Type': 'application/json' } }
-        );
+      const text = response.data.choices[0].message.content;
+      return text;
 
-        // Extract text from Gemini REST response structure
-        const text = response.data.candidates[0].content.parts[0].text;
-        return text;
-
-      } catch (error) {
-        const errorMsg = error.response ? JSON.stringify(error.response.data) : error.message;
-        console.error(`[ContentGenerator] Model ${modelName} REST call failed: ${errorMsg}`);
-        lastError = errorMsg;
-      }
+    } catch (error) {
+      const errorMsg = error.response ? JSON.stringify(error.response.data) : error.message;
+      console.error(`[ContentGenerator] OpenRouter API failed: ${errorMsg}`);
+      throw new Error(`OpenRouter AI failed to generate content: ${errorMsg}`);
     }
-
-    throw new Error(`Direct API calls failed for all models. Last error: ${lastError}`);
   }
 }
 
