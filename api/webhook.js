@@ -111,6 +111,8 @@ module.exports = async (req, res) => {
           `🎬 /create [keyword] — Buat script konten viral`,
           { parse_mode: 'HTML' }
         );
+      } else if (text.startsWith('/cek_versi')) {
+        await bot.sendMessage(chatId, `🚀 <b>Sistem Terupdate!</b>\nServer Time: ${new Date().toLocaleString('id-ID')}\nStatus: Online`, { parse_mode: 'HTML' });
       }
     }
   }
