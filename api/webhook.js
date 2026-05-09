@@ -69,6 +69,26 @@ module.exports = async (req, res) => {
           console.error(`[Trend Error] ${e.message}`);
           await bot.sendMessage(chatId, `❌ <b>System Error:</b>\n<code>${e.message}</code>`, { parse_mode: 'HTML' });
         }
+      } else if (text.startsWith('/create')) {
+        const args = text.split(' ').slice(1).join(' ');
+        if (!args) {
+          await bot.sendMessage(chatId, '❓ <b>Keyword tidak ditemukan!</b>\n\nSilakan masukkan keyword setelah command /create.\nContoh: <code>/create AI Agent</code>', { parse_mode: 'HTML' });
+          return;
+        }
+
+        await bot.sendMessage(chatId, `⏳ Sedang meracik script viral untuk <b>"${args}"</b>...`);
+        try {
+          const contentGenerator = require('../content_generator');
+          const scripts = await contentGenerator.generateHooks(args);
+          
+          // Clean up AI response to ensure it looks good in Telegram
+          const formattedScripts = scripts.replace(/#/g, '').replace(/\*\*/g, '<b>').replace(/\*/g, '•');
+          
+          await bot.sendMessage(chatId, `🎬 <b>CONTENT STRATEGY: ${args}</b>\n\n${formattedScripts}`, { parse_mode: 'HTML' });
+        } catch (e) {
+          console.error(`[Create Error] ${e.message}`);
+          await bot.sendMessage(chatId, `❌ <b>System Error:</b>\n<code>${e.message}</code>`, { parse_mode: 'HTML' });
+        }
       } else if (text.startsWith('/news')) {
         await bot.sendMessage(chatId, '⏳ Sedang menarik berita terkini...');
         const newsMessage = await getNewsData();
@@ -79,7 +99,8 @@ module.exports = async (req, res) => {
           `⚡ /fast — Sinyal instan (1 sinyal, rules longgar)\n` +
           `🔍 /high — High-probability setup (RR minimal 1:2)\n` +
           `📰 /news — Berita market &amp; crypto terbaru\n` +
-          `📈 /trend — Analisis Tren Sosmed`,
+          `📈 /trend — Analisis Tren Sosmed\n` +
+          `🎬 /create [keyword] — Buat script konten viral`,
           { parse_mode: 'HTML' }
         );
       }
