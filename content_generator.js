@@ -50,25 +50,25 @@ class ContentGenerator {
                 role: 'user',
                 content: `Create 3 different high-converting content hooks and short scripts for the keyword: "${keyword}".
 
-For each angle, follow this strict structure:
-1. Angle Name (e.g., FOMO, Pain Point, Curiosity)
-2. Hook: A powerful opening sentence to stop the scroll (first 3 seconds).
-3. Value: The core message or "meat" of the content.
-4. CTA: A persuasive call to action.
+              CRITICAL INSTRUCTIONS:
+              1. DO NOT include any introductory text (e.g., "Here are the scripts...", "Certainly!").
+              2. DO NOT include any concluding notes or summaries (e.g., "Note: These hooks...").
+              3. Provide ONLY the scripts.
 
-Requirements:
-- Use a mix of professional and catchy Indonesian (Bahasa Indonesia yang santai, modern, dan persuasif).
-- Focus on psychological triggers.
-- Ensure the hooks are bold and attention-grabbing.
-- Format the output clearly using Markdown for Telegram.
+              For each angle, use this EXACT format:
+              🎯 Angle: [Name]
+              🪝 Hook: "[Powerful opening sentence]"
+              💎 Value: [The core message/meat of the content]
+              📣 CTA: "[Persuasive call to action]"
+              --------------------------------------------
 
-Example Format:
-Angle: [Name]
-Hook: "[Sentence]"
-Value: [Description]
-CTA: "[Sentence]"`
-              }
-            ],
+              Requirements:
+              - Use a mix of professional and catchy Indonesian (Bahasa Indonesia yang santai, modern, dan persuasif).
+              - Focus on psychological triggers (FOMO, Curiosity, Pain Points).
+              - Ensure the hooks are bold and attention-grabbing.
+              - Format the output clearly using Markdown for Telegram.
+              `
+              }            ],
             temperature: 0.7
           },
           {
