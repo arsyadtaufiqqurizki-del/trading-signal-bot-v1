@@ -78,6 +78,7 @@ module.exports = async (req, res) => {
           `✅ <b>Bot Active &amp; Running di Vercel Serverless</b>\nSistem siap menganalisis market kapan saja.\n\n` +
           `⚡ /fast — Sinyal instan (1 sinyal, rules longgar)\n` +
           `🔍 /high — High-probability setup (RR minimal 1:2)\n` +
+          `📰 /news — Berita market &amp; crypto terbaru\n` +
           `📈 /trend — Analisis Tren Sosmed`,
           { parse_mode: 'HTML' }
         );
