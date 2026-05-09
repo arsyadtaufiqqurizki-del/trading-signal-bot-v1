@@ -1,69 +1,89 @@
 'use strict';
 
 /**
- * TrendAnalyzer handles the logic of identifying "breakouts" in social media volume.
- * It compares current data against baselines to determine if a trend is emerging.
+ * TrendAnalyzer analyzes RSS articles to find keyword frequency.
+ * It groups articles by keyword to determine if a topic is "Trending".
  */
 class TrendAnalyzer {
   constructor() {
-    // In a production environment, this would be stored in a database.
-    // Here we use a simple in-memory map for demonstration.
-    this.baselines = {
-      'AI Agent': 2,
-      'Digital Marketing': 3,
-      'Web3': 2,
-      'Content Creator': 3,
-      'TikTok Ads': 2
-    };
-    this.multiplier = 1.5; // Trigger alert if current volume > baseline * 1.5
+    this.watchlist = ['AI Agent', 'Digital Marketing', 'Web3', 'Content Creator', 'TikTok Ads', 'AI', 'SEO', 'Social Media'];
   }
 
   /**
-   * Analyzes the raw data from SocialScanner to find anomalies.
-   * @param {Array} rawData - Array of data from SocialScanner.
-   * @returns {Array} - Array of identified trends with analysis.
+   * Analyzes the articles and groups them by watchlist keywords.
+   * @param {Array} articles - List of articles from SocialScanner.
+   * @returns {Object} - Analysis result containing trends and raw activity.
    */
-  analyze(rawData) {
-    const trends = [];
+  analyze(articles) {
+    const trendMap = {};
+    const activityCount = {};
 
-    rawData.forEach(item => {
-      const keyword = item.keyword;
-      const currentVolume = item.count;
-      const baseline = this.baselines[keyword] || 50; // Default baseline if not found
+    // Initialize activity count
+    this.watchlist.forEach(kw => activityCount[kw] = 0);
 
-      const growth = ((currentVolume - baseline) / baseline) * 100;
-      const isTrending = currentVolume > (baseline * this.multiplier);
-
-      if (isTrending) {
-        trends.push({
-          keyword: keyword,
-          platform: item.platform,
-          currentVolume: currentVolume,
-          baseline: baseline,
-          growth: growth.toFixed(1),
-          status: '🚀 BREAKOUT',
-          confidence: this.calculateConfidence(item, growth)
-        });
-      }
+    articles.forEach(article => {
+      const textToScan = `${article.title} ${article.content}`.toLowerCase();
+      
+      this.watchlist.forEach(kw => {
+        if (textToScan.includes(kw.toLowerCase())) {
+          activityCount[kw]++;
+          
+          if (!trendMap[kw]) {
+            trendMap[kw] = [];
+          }
+          
+          // Limit to top 3 articles per keyword to keep report concise
+          if (trendMap[kw].length < 3) {
+            trendMap[kw].push({
+              title: article.title,
+              link: article.link,
+              source: article.source
+            });
+          }
+        }
+      });
     });
 
-    return trends;
+    // Convert map to a sorted array of trends
+    const trends = Object.keys(trendMap)
+      .map(kw => ({
+        keyword: kw,
+        articles: trendMap[kw],
+        count: activityCount[kw],
+        status: this.determineStatus(activityCount[kw])
+      }))
+      .sort((a, b) => b.count - a.count);
+
+    return {
+      trends,
+      activityCount
+    };
   }
 
   /**
-   * Calculates confidence based on growth and potentially other factors.
+   * Determines the buzz level based on occurrence count.
    */
-  calculateConfidence(item, growth) {
-    if (growth > 500) return 'Very High';
-    if (growth > 200) return 'High';
-    return 'Medium';
+  determineStatus(count) {
+    if (count >= 4) return 'High Buzz';
+    if (count >= 2) return 'Medium Buzz';
+    return 'Low Buzz';
   }
 
   /**
-   * Updates the baseline for a keyword.
+   * Generates a simple marketing insight based on the keyword.
    */
-  updateBaseline(keyword, value) {
-    this.baselines[keyword] = value;
+  getInsight(keyword) {
+    const insights = {
+      'AI Agent': 'Industri bergeser dari chatbot statis ke AI Agent otonom. Cocok untuk konten perbandingan efisiensi.',
+      'TikTok Ads': 'Algoritma TikTok semakin mengutamakan konten native. Buat konten yang tidak terlihat seperti iklan.',
+      'Digital Marketing': 'Tren omni-channel sedang naik. Fokus pada integrasi pengalaman user di berbagai platform.',
+      'Web3': 'Adopsi massal membutuhkan UX yang lebih simpel. Buat konten edukasi "Web3 untuk Pemula".',
+      'Content Creator': 'Ekonomi kreator kini fokus pada komunitas kecil (niche) daripada massa luas.',
+      'SEO': 'SGE (Search Generative Experience) mengubah cara orang mencari informasi. Optimasi untuk jawaban AI.',
+      'AI': 'Efisiensi produksi konten meningkat. Fokus pada "Kurasi Manusia" untuk menjaga kualitas.',
+      'Social Media': 'Video pendek masih mendominasi, namun durasi menengah mulai naik kembali.'
+    };
+    return insights[keyword] || 'Topik ini sedang naik daun. Analisis kompetitor dan buat konten yang menjawab masalah user.';
   }
 }
 
