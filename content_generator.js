@@ -24,12 +24,12 @@ class ContentGenerator {
       throw new Error('OPENROUTER_API_KEY is missing in .env');
     }
 
-    // Try multiple stable models as fallback, prioritizing gemma-4-31b-it
+    // Try multiple stable models as fallback, prioritizing llama-3-8b-instruct
     const modelsToTry = [
-      'google/gemma-4-31b-it', 
+      'meta-llama/llama-3-8b-instruct', 
       'google/gemini-pro-1.5', 
       'google/gemini-pro', 
-      'meta-llama/llama-3-8b-instruct'
+      'google/gemma-4-31b-it'
     ];
     let lastError = null;
 
