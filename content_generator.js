@@ -27,6 +27,7 @@ class ContentGenerator {
     // Try multiple stable models as fallback, prioritizing llama-3-8b-instruct
     const modelsToTry = [
       'minimax/minimax-m2.5:free',
+      'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free',
       'nousresearch/hermes-3-llama-3.1-405b:free', 
       'google/gemma-4-31b-it'
     ];
