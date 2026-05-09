@@ -82,7 +82,7 @@ class ContentGenerator {
         );
 
         const text = response.data.choices[0].message.content;
-        return text;
+        return { text, model: modelName };
 
       } catch (error) {
         const errorMsg = error.response ? JSON.stringify(error.response.data) : error.message;
