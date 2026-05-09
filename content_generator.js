@@ -24,19 +24,30 @@ class ContentGenerator {
       throw new Error('OPENROUTER_API_KEY is missing in .env');
     }
 
-    try {
-      const response = await axios.post(
-        this.apiUrl,
-        {
-          model: this.model,
-          messages: [
-            {
-              role: 'system',
-              content: 'You are an expert Viral Marketer specializing in the Indonesian market (TikTok, Instagram Reels, and YouTube Shorts). You create high-converting content hooks and short scripts that stop the scroll and drive engagement.'
-            },
-            {
-              role: 'user',
-              content: `Create 3 different high-converting content hooks and short scripts for the keyword: "${keyword}".
+    // Try multiple stable models as fallback
+    const modelsToTry = [
+      'google/gemini-pro-1.5', 
+      'google/gemini-pro', 
+      'meta-llama/llama-3-8b-instruct'
+    ];
+    let lastError = null;
+
+    for (const modelName of modelsToTry) {
+      try {
+        console.log(`[ContentGenerator] Attempting OpenRouter call to: ${modelName}`);
+        
+        const response = await axios.post(
+          this.apiUrl,
+          {
+            model: modelName,
+            messages: [
+              {
+                role: 'system',
+                content: 'You are an expert Viral Marketer specializing in the Indonesian market (TikTok, Instagram Reels, and YouTube Shorts). You create high-converting content hooks and short scripts that stop the scroll and drive engagement.'
+              },
+              {
+                role: 'user',
+                content: `Create 3 different high-converting content hooks and short scripts for the keyword: "${keyword}".
 
 For each angle, follow this strict structure:
 1. Angle Name (e.g., FOMO, Pain Point, Curiosity)
@@ -55,28 +66,31 @@ Angle: [Name]
 Hook: "[Sentence]"
 Value: [Description]
 CTA: "[Sentence]"`
+              }
+            ],
+            temperature: 0.7
+          },
+          {
+            headers: {
+              'Authorization': `Bearer ${this.apiKey}`,
+              'Content-Type': 'application/json',
+              'HTTP-Referer': 'https://gemini-cli.vercel.app',
+              'X-Title': 'Gemini CLI Trend Bot'
             }
-          ],
-          temperature: 0.7
-        },
-        {
-          headers: {
-            'Authorization': `Bearer ${this.apiKey}`,
-            'Content-Type': 'application/json',
-            'HTTP-Referer': 'https://gemini-cli.vercel.app', // Required by some OpenRouter models
-            'X-Title': 'Gemini CLI Trend Bot'
           }
-        }
-      );
+        );
 
-      const text = response.data.choices[0].message.content;
-      return text;
+        const text = response.data.choices[0].message.content;
+        return text;
 
-    } catch (error) {
-      const errorMsg = error.response ? JSON.stringify(error.response.data) : error.message;
-      console.error(`[ContentGenerator] OpenRouter API failed: ${errorMsg}`);
-      throw new Error(`OpenRouter AI failed to generate content: ${errorMsg}`);
+      } catch (error) {
+        const errorMsg = error.response ? JSON.stringify(error.response.data) : error.message;
+        console.error(`[ContentGenerator] Model ${modelName} failed: ${errorMsg}`);
+        lastError = errorMsg;
+      }
     }
+
+    throw new Error(`All OpenRouter models failed. Last error: ${lastError}`);
   }
 }
 
