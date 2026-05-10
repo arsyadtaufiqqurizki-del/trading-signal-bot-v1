@@ -37,7 +37,8 @@ class TrendAnalyzer {
             trendMap[kw].push({
               title: article.title,
               link: article.link,
-              source: article.source
+              source: article.source,
+              pubDate: article.pubDate
             });
           }
         }

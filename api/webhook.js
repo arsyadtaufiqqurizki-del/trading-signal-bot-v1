@@ -48,9 +48,14 @@ module.exports = async (req, res) => {
         if (trends.length === 0) {
           await bot.sendMessage(chatId, `📉 Tidak ditemukan lonjakan keyword signifikan hari ini.`, { parse_mode: 'HTML' });
         } else {
-          let report = `🇮🇩 <b>INDONESIA TREND REPORT</b>\n\n`;
+          const now = new Date().toLocaleString('id-ID', { 
+            weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', 
+            hour: '2-digit', minute: '2-digit', second: '2-digit' 
+          });
           
-          // Limit to Top 5 most impactful trends
+          let report = `🇮🇩 <b>INDONESIA TREND REPORT</b>\n`;
+          report += `📅 ${now}\n\n`;
+          
           const topTrends = trends.slice(0, 5);
           
           topTrends.forEach((t, index) => {
@@ -60,9 +65,17 @@ module.exports = async (req, res) => {
             report += `└ Insight: <i>${insight}</i>\n`;
             
             if (t.articles && t.articles.length > 0) {
-              // Include top 2 news links as concise 'Read more' labels
-              t.articles.slice(0, 2).forEach((art, i) => {
-                report += `└ 📰 <a href="${art.link}">Baca selengkapnya ${i + 1}</a>\n`;
+              report += `└ 📰 <b>Headline Terbaru:</b>\n`;
+              t.articles.slice(0, 2).forEach(art => {
+                const pubDate = art.pubDate 
+                  ? new Date(art.pubDate).toLocaleString('id-ID', { 
+                      weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' 
+                    }) 
+                  : 'Tgl tidak tersedia';
+                
+                report += `└ [${pubDate}]\n`;
+                report += `  • "${art.title}" — ${art.source}\n`;
+                report += `  🔗 <a href="${art.link}">Baca Artikel</a>\n`;
               });
             }
             report += `\n`;
