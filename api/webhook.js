@@ -54,34 +54,44 @@ module.exports = async (req, res) => {
           });
           
           let report = `🇮🇩 <b>INDONESIA TREND REPORT</b>\n`;
-          report += `📅 ${now}\n\n`;
+          report += `📅 <i>${now}</i>\n`;
+          report += `━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
           
           const topTrends = trends.slice(0, 5);
           
           topTrends.forEach((t, index) => {
             const insight = trendAnalyzer.getInsight(t.keyword);
-            report += `${index + 1}. 🔥 <b>${t.keyword}</b>\n`;
-            report += `└ Status: <code>${t.status}</code>\n`;
-            report += `└ Insight: <i>${insight}</i>\n`;
+            
+            // Status Badge
+            let badge = '🟢'; // Mulai Naik
+            if (t.status === 'Sangat Viral') badge = '🔴';
+            else if (t.status === 'Sedang Tren') badge = '🟡';
+
+            report += `${index + 1}. 🔥 <b>${t.keyword.toUpperCase()}</b>\n`;
+            report += `└ ${badge} <code>${t.status}</code>\n`;
+            report += `└ <i>Insight: ${insight}</i>\n`;
             
             if (t.articles && t.articles.length > 0) {
               report += `└ 📰 <b>Headline Terbaru:</b>\n`;
               t.articles.slice(0, 2).forEach(art => {
                 const pubDate = art.pubDate 
                   ? new Date(art.pubDate).toLocaleString('id-ID', { 
-                      weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' 
+                      weekday: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' 
                     }) 
                   : 'Tgl tidak tersedia';
                 
-                report += `└ [${pubDate}]\n`;
-                report += `  • "${art.title}" — ${art.source}\n`;
-                report += `  🔗 <a href="${art.link}">Baca Artikel</a>\n`;
+                report += `  • [${pubDate}] "${art.title}"\n`;
+                report += `    🔗 <a href="${art.link}">Baca Selengkapnya</a>\n`;
               });
             }
-            report += `\n`;
+            
+            // Add divider if not the last item
+            if (index < topTrends.length - 1) {
+              report += `\n━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+            }
           });
 
-          report += `💡 <i>Gunakan /create [keyword] untuk buat script konten viral!</i>`;
+          report += `\n\n💡 <i>Gunakan /create [keyword] untuk buat script konten viral!</i>`;
           
           await bot.sendMessage(chatId, report, { parse_mode: 'HTML' });
         }
