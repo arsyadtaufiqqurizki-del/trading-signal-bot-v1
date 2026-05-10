@@ -60,9 +60,9 @@ module.exports = async (req, res) => {
             report += `└ Insight: <i>${insight}</i>\n`;
             
             if (t.articles && t.articles.length > 0) {
-              // Include top 2 news links for verification and research
-              t.articles.slice(0, 2).forEach(art => {
-                report += `└ 📰 <a href="${art.link}">${art.title}</a>\n`;
+              // Include top 2 news links as concise 'Read more' labels
+              t.articles.slice(0, 2).forEach((art, i) => {
+                report += `└ 📰 <a href="${art.link}">Baca selengkapnya ${i + 1}</a>\n`;
               });
             }
             report += `\n`;
