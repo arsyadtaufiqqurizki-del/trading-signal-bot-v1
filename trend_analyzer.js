@@ -60,8 +60,8 @@ class TrendAnalyzer {
   }
 
   determineStatus(count) {
-    if (count >= 5) return 'Sangat Viral';
-    if (count >= 3) return 'Sedang Tren';
+    if (count >= 15) return 'Sangat Viral';
+    if (count >= 7) return 'Sedang Tren';
     return 'Mulai Naik';
   }
 

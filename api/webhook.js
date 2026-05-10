@@ -43,15 +43,26 @@ module.exports = async (req, res) => {
         const trendAnalyzer = require('../trend_analyzer');
         const watchlist = trendAnalyzer.watchlist;
         const articles = await socialScanner.scanKeywords(watchlist);
-        const { trends, activityCount } = trendAnalyzer.analyze(articles);
+        const { trends } = trendAnalyzer.analyze(articles);
 
         if (trends.length === 0) {
           await bot.sendMessage(chatId, `📉 Tidak ditemukan lonjakan keyword signifikan hari ini.`, { parse_mode: 'HTML' });
         } else {
-          await bot.sendMessage(chatId, `🇮🇩 <b>INDONESIA TREND REPORT</b>`, { parse_mode: 'HTML' });
-          for (const t of trends) {
-            await bot.sendMessage(chatId, `🔥 <b>TRENDING NOW: [${t.keyword}]</b>\nStatus: ${t.status}`, { parse_mode: 'HTML' });
-          }
+          let report = `🇮🇩 <b>INDONESIA TREND REPORT</b>\n\n`;
+          
+          // Limit to Top 5 most impactful trends
+          const topTrends = trends.slice(0, 5);
+          
+          topTrends.forEach((t, index) => {
+            const insight = trendAnalyzer.getInsight(t.keyword);
+            report += `${index + 1}. 🔥 <b>${t.keyword}</b>\n`;
+            report += `└ Status: <code>${t.status}</code>\n`;
+            report += `└ Insight: <i>${insight}</i>\n\n`;
+          });
+
+          report += `💡 <i>Gunakan /create [keyword] untuk buat script konten viral!</i>`;
+          
+          await bot.sendMessage(chatId, report, { parse_mode: 'HTML' });
         }
       } else if (text.startsWith('/create')) {
         const args = text.split(' ').slice(1).join(' ');
