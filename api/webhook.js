@@ -57,7 +57,15 @@ module.exports = async (req, res) => {
             const insight = trendAnalyzer.getInsight(t.keyword);
             report += `${index + 1}. 🔥 <b>${t.keyword}</b>\n`;
             report += `└ Status: <code>${t.status}</code>\n`;
-            report += `└ Insight: <i>${insight}</i>\n\n`;
+            report += `└ Insight: <i>${insight}</i>\n`;
+            
+            if (t.articles && t.articles.length > 0) {
+              // Include top 2 news links for verification and research
+              t.articles.slice(0, 2).forEach(art => {
+                report += `└ 📰 <a href="${art.link}">${art.title}</a>\n`;
+              });
+            }
+            report += `\n`;
           });
 
           report += `💡 <i>Gunakan /create [keyword] untuk buat script konten viral!</i>`;
