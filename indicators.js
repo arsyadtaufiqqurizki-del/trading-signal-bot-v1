@@ -123,4 +123,49 @@ function detectDivergence(candles, rsi) {
   return null;
 }
 
-module.exports = { calcEMA, calcRSI, calcATR, isVolumeSpike, detectStructure, detectBOS, findKeyLevels, detectDivergence };
+// ── FAIR VALUE GAP (FVG) ────────────────────────────────────────────────────
+function detectFVG(candles) {
+  const fvgs = [];
+  if (candles.length < 3) return fvgs;
+  for (let i = 2; i < candles.length; i++) {
+    const c1 = candles[i-2];
+    const c3 = candles[i];
+    if (c1.high < c3.low) {
+      fvgs.push({ type: 'BULLISH_FVG', top: c3.low, bottom: c1.high, index: i-1 });
+    }
+    if (c1.low > c3.high) {
+      fvgs.push({ type: 'BEARISH_FVG', top: c1.low, bottom: c3.high, index: i-1 });
+    }
+  }
+  return fvgs;
+}
+
+// ── ORDER BLOCKS (OB) ───────────────────────────────────────────────────────
+function detectOrderBlocks(candles) {
+  const obs = [];
+  if (candles.length < 5) return obs;
+  const avgBody = candles.slice(-20).reduce((sum, c) => sum + Math.abs(c.close - c.open), 0) / 20;
+
+  for (let i = 1; i < candles.length - 2; i++) {
+    // Strong Bullish Move check
+    if (candles[i+1].close > candles[i+1].open && candles[i+2].close > candles[i+2].open && 
+        (candles[i+1].close - candles[i+1].open) > avgBody * 1.5) {
+      if (candles[i].close < candles[i].open) {
+        obs.push({ type: 'BULLISH_OB', top: candles[i].high, bottom: candles[i].low, index: i });
+      }
+    }
+    // Strong Bearish Move check
+    if (candles[i+1].close < candles[i+1].open && candles[i+2].close < candles[i+2].open && 
+        (candles[i+1].open - candles[i+1].close) > avgBody * 1.5) {
+      if (candles[i].close > candles[i].open) {
+        obs.push({ type: 'BEARISH_OB', top: candles[i].high, bottom: candles[i].low, index: i });
+      }
+    }
+  }
+  return obs;
+}
+
+module.exports = { 
+  calcEMA, calcRSI, calcATR, isVolumeSpike, detectStructure, 
+  detectBOS, findKeyLevels, detectDivergence, detectFVG, detectOrderBlocks 
+};
