@@ -8,24 +8,25 @@ const {
 const { fmt } = require('./utils');
 
 const PAIRS = [
-  { symbol: 'BTCUSDT',  name: 'BTC/USDT',  htf: '4h', ltf: '1h' },
-  { symbol: 'ETHUSDT',  name: 'ETH/USDT',  htf: '4h', ltf: '1h' },
-  { symbol: 'SOLUSDT',  name: 'SOL/USDT',  htf: '4h', ltf: '1h' },
-  { symbol: 'HYPEUSDT', name: 'HYPE/USDT', htf: '4h', ltf: '1h' },
-  { symbol: 'TAOUSDT',  name: 'TAO/USDT',  htf: '4h', ltf: '1h' },
-  { symbol: 'SUIUSDT',  name: 'SUI/USDT',  htf: '4h', ltf: '1h' },
-  { symbol: 'DOGEUSDT', name: 'DOGE/USDT',  htf: '4h', ltf: '1h' },
-  { symbol: 'BNBUSDT',  name: 'BNB/USDT',  htf: '4h', ltf: '1h' },
-  { symbol: 'XRPUSDT',  name: 'XRP/USDT',  htf: '4h', ltf: '1h' },
+  { symbol: 'BTCUSDT',  name: 'BTC/USDT',  htf: '4h', ltf: '1h', exec: '15m' },
+  { symbol: 'ETHUSDT',  name: 'ETH/USDT',  htf: '4h', ltf: '1h', exec: '15m' },
+  { symbol: 'SOLUSDT',  name: 'SOL/USDT',  htf: '4h', ltf: '1h', exec: '15m' },
+  { symbol: 'HYPEUSDT', name: 'HYPE/USDT', htf: '4h', ltf: '1h', exec: '15m' },
+  { symbol: 'TAOUSDT',  name: 'TAO/USDT',  htf: '4h', ltf: '1h', exec: '15m' },
+  { symbol: 'SUIUSDT',  name: 'SUI/USDT',  htf: '4h', ltf: '1h', exec: '15m' },
+  { symbol: 'DOGEUSDT', name: 'DOGE/USDT',  htf: '4h', ltf: '1h', exec: '15m' },
+  { symbol: 'BNBUSDT',  name: 'BNB/USDT',  htf: '4h', ltf: '1h', exec: '15m' },
+  { symbol: 'XRPUSDT',  name: 'XRP/USDT',  htf: '4h', ltf: '1h', exec: '15m' },
 ];
 
 async function analyzeAsset(pair) {
-  const [htfCandles, ltfCandles] = await Promise.all([
+  const [htfCandles, ltfCandles, execCandles] = await Promise.all([
     getKlines(pair.symbol, pair.htf, 200),
     getKlines(pair.symbol, pair.ltf, 200),
+    getKlines(pair.symbol, pair.exec, 200),
   ]);
 
-  if (!htfCandles.length || !ltfCandles.length) return null;
+  if (!htfCandles.length || !ltfCandles.length || !execCandles.length) return null;
 
   const htfCloses = htfCandles.map(c => c.close);
   const ltfCloses = ltfCandles.map(c => c.close);
@@ -48,9 +49,15 @@ async function analyzeAsset(pair) {
   const ltfAtr    = calcATR(ltfCandles, 14);
   const keyLevels = findKeyLevels(htfCandles, 5);
 
-  // SMC Detection
+  // SMC Detection (on LTF)
   const ltfFvgs = detectFVG(ltfCandles);
   const ltfObs  = detectOrderBlocks(ltfCandles);
+
+  // Execution Trigger (m15)
+  const execStruct = detectStructure(execCandles);
+  const execBos    = detectBOS(execCandles, execStruct);
+  const execRsi    = calcRSI(execCandles.map(c => c.close), 14);
+  const execDiv    = detectDivergence(execCandles, execRsi);
 
   const price = ltfCandles[ltfCandles.length - 1].close;
   const curRsi = ltfRsi[ltfRsi.length - 1];
@@ -117,6 +124,10 @@ async function analyzeAsset(pair) {
   let signal = null;
 
   if (longScore >= MIN_CONFLUENCE && longScore > shortScore) {
+    // Final m15 Confirmation for LONG
+    const isLongConfirmed = (execBos === 'BULLISH_BOS' || execDiv === 'BULLISH_DIVERGENCE');
+    if (!isLongConfirmed) return null;
+
     const atr = ltfAtr;
     const sl = parseFloat((price - atr * 1.5).toFixed(price > 1000 ? 0 : 4));
     const tp1 = parseFloat((price + atr * 3.0).toFixed(price > 1000 ? 0 : 4));
@@ -128,7 +139,7 @@ async function analyzeAsset(pair) {
       signal = {
         pair: pair.name, direction: 'LONG',
         entry: price, sl, tp1, tp2, rr,
-        confluenceScore: longScore, factors: longFactors,
+        confluenceScore: longScore, factors: [...longFactors, `m15 Confirmation: ${execBos === 'BULLISH_BOS' ? 'BOS' : 'Divergence'} ✅`],
         rsi: curRsi, htfBias, htfTrend: htfStruct.trend, ltfTrend: ltfStruct.trend,
         bos: ltfBos, divergence: ltfDiv, volumeSpike: ltfVolume,
         nearLevel: nearSupport,
@@ -136,6 +147,10 @@ async function analyzeAsset(pair) {
       };
     }
   } else if (shortScore >= MIN_CONFLUENCE && shortScore > longScore) {
+    // Final m15 Confirmation for SHORT
+    const isShortConfirmed = (execBos === 'BEARISH_BOS' || execDiv === 'BEARISH_DIVERGENCE');
+    if (!isShortConfirmed) return null;
+
     const atr = ltfAtr;
     const slShort = parseFloat((price + atr * 1.5).toFixed(price > 1000 ? 0 : 4));
     const tp1 = parseFloat((price - atr * 3.0).toFixed(price > 1000 ? 0 : 4));
@@ -147,7 +162,7 @@ async function analyzeAsset(pair) {
       signal = {
         pair: pair.name, direction: 'SHORT',
         entry: price, sl: slShort, tp1, tp2, rr,
-        confluenceScore: shortScore, factors: shortFactors,
+        confluenceScore: shortScore, factors: [...shortFactors, `m15 Confirmation: ${execBos === 'BEARISH_BOS' ? 'BOS' : 'Divergence'} ✅`],
         rsi: curRsi, htfBias, htfTrend: htfStruct.trend, ltfTrend: ltfStruct.trend,
         bos: ltfBos, divergence: ltfDiv, volumeSpike: ltfVolume,
         nearLevel: nearResist,
