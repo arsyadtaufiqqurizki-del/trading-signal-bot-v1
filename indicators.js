@@ -184,7 +184,37 @@ function detectOrderBlocks(candles) {
   return obs;
 }
 
-module.exports = { 
-  calcEMA, calcRSI, calcATR, isVolumeSpike, detectStructure, 
-  detectBOS, findKeyLevels, detectDivergence, detectFVG, detectOrderBlocks 
+// ── ADX (AVERAGE DIRECTIONAL INDEX) ─────────────────────────────────────────
+function calcADX(candles, period = 14) {
+  if (candles.length < period * 2 + 1) return 0;
+  const trs = [], plusDMs = [], minusDMs = [];
+  for (let i = 1; i < candles.length; i++) {
+    const curr = candles[i], prev = candles[i - 1];
+    trs.push(Math.max(curr.high - curr.low, Math.abs(curr.high - prev.close), Math.abs(curr.low - prev.close)));
+    const up = curr.high - prev.high, dn = prev.low - curr.low;
+    plusDMs.push(up > dn && up > 0 ? up : 0);
+    minusDMs.push(dn > up && dn > 0 ? dn : 0);
+  }
+  let sTR = trs.slice(0, period).reduce((a, b) => a + b, 0);
+  let sPDM = plusDMs.slice(0, period).reduce((a, b) => a + b, 0);
+  let sMDM = minusDMs.slice(0, period).reduce((a, b) => a + b, 0);
+  const dxArr = [];
+  for (let i = period; i < trs.length; i++) {
+    sTR  = sTR  - sTR  / period + trs[i];
+    sPDM = sPDM - sPDM / period + plusDMs[i];
+    sMDM = sMDM - sMDM / period + minusDMs[i];
+    const pDI = sTR > 0 ? (sPDM / sTR) * 100 : 0;
+    const mDI = sTR > 0 ? (sMDM / sTR) * 100 : 0;
+    const diSum = pDI + mDI;
+    dxArr.push(diSum > 0 ? (Math.abs(pDI - mDI) / diSum) * 100 : 0);
+  }
+  if (dxArr.length < period) return 0;
+  let adx = dxArr.slice(0, period).reduce((a, b) => a + b, 0) / period;
+  for (let i = period; i < dxArr.length; i++) adx = (adx * (period - 1) + dxArr[i]) / period;
+  return adx;
+}
+
+module.exports = {
+  calcEMA, calcRSI, calcATR, calcADX, isVolumeSpike, detectStructure,
+  detectBOS, findKeyLevels, detectDivergence, detectFVG, detectOrderBlocks
 };

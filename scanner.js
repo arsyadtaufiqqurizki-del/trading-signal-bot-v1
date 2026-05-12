@@ -1,7 +1,7 @@
 'use strict';
 const { getKlines } = require('./binance');
 const {
-  calcEMA, calcRSI, calcATR,
+  calcEMA, calcRSI, calcATR, calcADX,
   isVolumeSpike, detectStructure, detectBOS,
   findKeyLevels, detectDivergence, detectFVG, detectOrderBlocks
 } = require('./indicators');
@@ -18,6 +18,17 @@ const PAIRS = [
   { symbol: 'BNBUSDT',  name: 'BNB/USDT',  htf: '4h', ltf: '1h', exec: '15m' },
   { symbol: 'XRPUSDT',  name: 'XRP/USDT',  htf: '4h', ltf: '1h', exec: '15m' },
 ];
+
+function checkFvgMitigation(fvgs, candles) {
+  return fvgs.filter(fvg => {
+    const subsequent = candles.slice(fvg.index + 1);
+    for (const c of subsequent) {
+      if (fvg.type === 'BULLISH_FVG' && c.low <= fvg.bottom) return false;
+      if (fvg.type === 'BEARISH_FVG' && c.high >= fvg.top) return false;
+    }
+    return true;
+  });
+}
 
 async function analyzeAsset(pair, btcTrend) {
   const [htfCandles, ltfCandles, execCandles] = await Promise.all([
@@ -52,6 +63,16 @@ async function analyzeAsset(pair, btcTrend) {
   // SMC Detection (on LTF)
   const ltfFvgs = detectFVG(ltfCandles);
   const ltfObs  = detectOrderBlocks(ltfCandles);
+
+  // ADX — trend strength filter
+  const ltfAdx = calcADX(ltfCandles, 14);
+
+  // Active FVGs: unmitigated + recent 50 candles
+  const activeFvgs = checkFvgMitigation(ltfFvgs, ltfCandles)
+    .filter(fvg => fvg.index >= ltfCandles.length - 50);
+
+  // Recent OBs: last 30 candles only
+  const recentObs = ltfObs.filter(ob => ob.index >= ltfCandles.length - 30);
 
   // Execution Trigger (m15)
   const execStruct = detectStructure(execCandles);
@@ -104,25 +125,25 @@ async function analyzeAsset(pair, btcTrend) {
   if (ltfBos === 'BULLISH_BOS') { longScore += 2; longFactors.push('Bullish BOS Confirmed ✅'); }
   if (ltfBos === 'BEARISH_BOS') { shortScore += 2; shortFactors.push('Bearish BOS Confirmed ✅'); }
 
-  // 6. Volume spike (Increased Weight for Validation)
+  // 6. Volume spike — directional (bullish candle = long pressure, bearish = short pressure)
   if (ltfVolume) {
-    longScore += 2;  longFactors.push('Volume Spike Confirmed ⚡');
-    shortScore += 2; shortFactors.push('Volume Spike Confirmed ⚡');
+    const lastLtf = ltfCandles[ltfCandles.length - 1];
+    if (lastLtf.close > lastLtf.open) { longScore  += 2; longFactors.push('Bullish Volume Spike ⚡'); }
+    else                               { shortScore += 2; shortFactors.push('Bearish Volume Spike ⚡'); }
   } else {
-    // Penalty for low volume on potential breakout
-    longScore -= 1;
+    longScore  -= 1;
     shortScore -= 1;
   }
 
-  // 7. Order Block Touch (High Weight)
-  const nearBullOb = ltfObs.find(ob => ob.type === 'BULLISH_OB' && price <= ob.top && price >= ob.bottom);
-  const nearBearOb = ltfObs.find(ob => ob.type === 'BEARISH_OB' && price <= ob.top && price >= ob.bottom);
+  // 7. Order Block Touch — recent OBs only (High Weight)
+  const nearBullOb = recentObs.find(ob => ob.type === 'BULLISH_OB' && price <= ob.top && price >= ob.bottom);
+  const nearBearOb = recentObs.find(ob => ob.type === 'BEARISH_OB' && price <= ob.top && price >= ob.bottom);
   if (nearBullOb) { longScore += 3; longFactors.push(`Price in Bullish OB zone ✅`); }
   if (nearBearOb) { shortScore += 3; shortFactors.push(`Price in Bearish OB zone ✅`); }
 
-  // 8. FVG Filling (Medium Weight)
-  const nearBullFvg = ltfFvgs.find(fvg => fvg.type === 'BULLISH_FVG' && price <= fvg.top && price >= fvg.bottom);
-  const nearBearFvg = ltfFvgs.find(fvg => fvg.type === 'BEARISH_FVG' && price <= fvg.top && price >= fvg.bottom);
+  // 8. FVG Filling — unmitigated only (Medium Weight)
+  const nearBullFvg = activeFvgs.find(fvg => fvg.type === 'BULLISH_FVG' && price <= fvg.top && price >= fvg.bottom);
+  const nearBearFvg = activeFvgs.find(fvg => fvg.type === 'BEARISH_FVG' && price <= fvg.top && price >= fvg.bottom);
   if (nearBullFvg) { longScore += 2; longFactors.push(`Price filling Bullish FVG ✅`); }
   if (nearBearFvg) { shortScore += 2; shortFactors.push(`Price filling Bearish FVG ✅`); }
 
@@ -133,7 +154,11 @@ async function analyzeAsset(pair, btcTrend) {
   if (nearResist)  { shortScore += 1; shortFactors.push(`Near Key Resistance $${fmt(nearResist.price)} ✅`); }
 
   // ── SIGNAL GENERATION ────────────────────────────────────────────────────
-  const MIN_CONFLUENCE = 6; 
+  // ADX gate: skip signal if market is ranging (no directional trend)
+  if (ltfAdx < 20) return null;
+  if (ltfAdx < 25) { longScore -= 1; shortScore -= 1; }
+
+  const MIN_CONFLUENCE = 7;
   let signal = null;
 
   if (longScore >= MIN_CONFLUENCE && longScore > shortScore) {
@@ -160,7 +185,7 @@ async function analyzeAsset(pair, btcTrend) {
     const riskCons = entryConservative - sl;
     const rrCons = parseFloat(((tp1 - entryConservative) / riskCons).toFixed(2));
 
-    if (rrAgg >= 1.9 && sl > 0) {
+    if (rrAgg >= 2.2 && sl > 0) {
       signal = {
         pair: pair.name, direction: 'LONG',
         entryAggressive, entryConservative, sl, tp1, tp2, 
@@ -196,7 +221,7 @@ async function analyzeAsset(pair, btcTrend) {
     const riskCons = slShort - entryConservative;
     const rrCons = parseFloat(((entryConservative - tp1) / riskCons).toFixed(2));
 
-    if (rrAgg >= 1.9 && tp1 > 0) {
+    if (rrAgg >= 2.2 && tp1 > 0) {
       signal = {
         pair: pair.name, direction: 'SHORT',
         entryAggressive, entryConservative, sl: slShort, tp1, tp2, 
