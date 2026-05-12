@@ -184,6 +184,76 @@ function detectOrderBlocks(candles) {
   return obs;
 }
 
+// ── MACD (12, 26, 9) ─────────────────────────────────────────────────────────
+function calcMACD(closes, fast = 12, slow = 26, signal = 9) {
+  const emaFast = calcEMA(closes, fast);
+  const emaSlow = calcEMA(closes, slow);
+  if (!emaFast.length || !emaSlow.length) return { macd: 0, signal: 0, histogram: 0, prevHistogram: 0 };
+
+  const offset = emaFast.length - emaSlow.length;
+  const macdLine = emaSlow.map((v, i) => emaFast[i + offset] - v);
+
+  const signalLine = calcEMA(macdLine, signal);
+  if (!signalLine.length) return { macd: macdLine[macdLine.length - 1] || 0, signal: 0, histogram: 0, prevHistogram: 0 };
+
+  const sigOffset = macdLine.length - signalLine.length;
+  const histograms = signalLine.map((v, i) => macdLine[i + sigOffset] - v);
+
+  return {
+    macd: macdLine[macdLine.length - 1],
+    signal: signalLine[signalLine.length - 1],
+    histogram: histograms[histograms.length - 1] || 0,
+    prevHistogram: histograms.length >= 2 ? histograms[histograms.length - 2] : 0,
+  };
+}
+
+// ── STOCHASTIC RSI ───────────────────────────────────────────────────────────
+function calcStochRSI(closes, rsiPeriod = 14, stochPeriod = 14) {
+  const rsi = calcRSI(closes, rsiPeriod);
+  if (rsi.length < stochPeriod + 2) return { k: 50, prevK: 50 };
+
+  const rawK = [];
+  for (let i = stochPeriod - 1; i < rsi.length; i++) {
+    const slice = rsi.slice(i - stochPeriod + 1, i + 1);
+    const lo = Math.min(...slice), hi = Math.max(...slice);
+    rawK.push(hi === lo ? 50 : ((rsi[i] - lo) / (hi - lo)) * 100);
+  }
+
+  // Smooth K with 3-period SMA
+  const k = [];
+  for (let i = 2; i < rawK.length; i++) k.push((rawK[i] + rawK[i - 1] + rawK[i - 2]) / 3);
+
+  return {
+    k: k[k.length - 1] ?? 50,
+    prevK: k[k.length - 2] ?? 50,
+  };
+}
+
+// ── CANDLE PATTERN ───────────────────────────────────────────────────────────
+function detectCandlePattern(candles) {
+  if (candles.length < 2) return null;
+  const last = candles[candles.length - 1];
+  const prev = candles[candles.length - 2];
+  const body = Math.abs(last.close - last.open);
+  const lowerWick = Math.min(last.open, last.close) - last.low;
+  const upperWick = last.high - Math.max(last.open, last.close);
+
+  if (body === 0) return null;
+
+  if (prev.close < prev.open && last.close > last.open &&
+      last.open <= prev.close && last.close >= prev.open) return 'BULLISH_ENGULFING';
+  if (prev.close > prev.open && last.close < last.open &&
+      last.open >= prev.close && last.close <= prev.open) return 'BEARISH_ENGULFING';
+
+  if (lowerWick > body * 2 && upperWick < body * 0.5) return 'HAMMER';
+  if (upperWick > body * 2 && lowerWick < body * 0.5) return 'SHOOTING_STAR';
+
+  if (lowerWick > body * 3) return 'BULLISH_PIN_BAR';
+  if (upperWick > body * 3) return 'BEARISH_PIN_BAR';
+
+  return null;
+}
+
 // ── ADX (AVERAGE DIRECTIONAL INDEX) ─────────────────────────────────────────
 function calcADX(candles, period = 14) {
   if (candles.length < period * 2 + 1) return 0;
@@ -215,6 +285,7 @@ function calcADX(candles, period = 14) {
 }
 
 module.exports = {
-  calcEMA, calcRSI, calcATR, calcADX, isVolumeSpike, detectStructure,
-  detectBOS, findKeyLevels, detectDivergence, detectFVG, detectOrderBlocks
+  calcEMA, calcRSI, calcATR, calcADX, calcMACD, calcStochRSI,
+  isVolumeSpike, detectStructure, detectBOS, findKeyLevels,
+  detectDivergence, detectFVG, detectOrderBlocks, detectCandlePattern
 };

@@ -1,9 +1,9 @@
 'use strict';
 const { getKlines } = require('./binance');
 const {
-  calcEMA, calcRSI, calcATR, calcADX,
+  calcEMA, calcRSI, calcATR, calcADX, calcMACD, calcStochRSI,
   isVolumeSpike, detectStructure, detectBOS,
-  findKeyLevels, detectDivergence, detectFVG, detectOrderBlocks
+  findKeyLevels, detectDivergence, detectFVG, detectOrderBlocks, detectCandlePattern
 } = require('./indicators');
 const { fmt } = require('./utils');
 
@@ -30,7 +30,7 @@ function checkFvgMitigation(fvgs, candles) {
   });
 }
 
-async function analyzeAsset(pair, btcTrend) {
+async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
   const [htfCandles, ltfCandles, execCandles] = await Promise.all([
     getKlines(pair.symbol, pair.htf, 200),
     getKlines(pair.symbol, pair.ltf, 200),
@@ -77,8 +77,13 @@ async function analyzeAsset(pair, btcTrend) {
   // Execution Trigger (m15)
   const execStruct = detectStructure(execCandles);
   const execBos    = detectBOS(execCandles, execStruct);
-  const execRsi    = calcRSI(execCandles.map(c => c.close), 14);
-  const execDiv    = detectDivergence(execCandles, execRsi);
+  const execRsi      = calcRSI(execCandles.map(c => c.close), 14);
+  const execDiv      = detectDivergence(execCandles, execRsi);
+
+  // Tier 2 — new indicators
+  const ltfMacd      = calcMACD(ltfCloses);
+  const execStochRsi = calcStochRSI(execCandles.map(c => c.close));
+  const htfPattern   = detectCandlePattern(htfCandles);
 
   const price = ltfCandles[ltfCandles.length - 1].close;
   const curRsi = ltfRsi[ltfRsi.length - 1];
@@ -96,13 +101,22 @@ async function analyzeAsset(pair, btcTrend) {
   let longScore = 0, shortScore = 0;
   const longFactors = [], shortFactors = [];
 
-  // 0. BTC Market Correlation (High Weight)
-  if (btcTrend === 'BULLISH') {
-    longScore += 2; longFactors.push('BTC Market Bullish 🚀');
-    shortScore -= 2; // Penalize shorts when captain is bullish
-  } else if (btcTrend === 'BEARISH') {
-    shortScore += 2; shortFactors.push('BTC Market Bearish 📉');
-    longScore -= 2; // Penalize longs when captain is dumping
+  // 0a. BTC 4H Correlation — macro bias (Highest Weight)
+  if (btcTrend4h === 'BULLISH') {
+    longScore += 3; longFactors.push('BTC 4H Bullish 🚀');
+    shortScore -= 3;
+  } else if (btcTrend4h === 'BEARISH') {
+    shortScore += 3; shortFactors.push('BTC 4H Bearish 📉');
+    longScore -= 3;
+  }
+
+  // 0b. BTC 1H Correlation — intraday momentum (High Weight)
+  if (btcTrend1h === 'BULLISH') {
+    longScore += 2; longFactors.push('BTC 1H Bullish 🚀');
+    shortScore -= 2;
+  } else if (btcTrend1h === 'BEARISH') {
+    shortScore += 2; shortFactors.push('BTC 1H Bearish 📉');
+    longScore -= 2;
   }
 
   // 1. HTF trend alignment (High Weight)
@@ -152,6 +166,32 @@ async function analyzeAsset(pair, btcTrend) {
   const nearResist  = keyLevels.find(l => l.type === 'RESISTANCE' && Math.abs(price - l.price) / price < 0.005);
   if (nearSupport) { longScore += 1; longFactors.push(`Near Key Support $${fmt(nearSupport.price)} ✅`); }
   if (nearResist)  { shortScore += 1; shortFactors.push(`Near Key Resistance $${fmt(nearResist.price)} ✅`); }
+
+  // 10. MACD Momentum — LTF (Medium Weight)
+  if (ltfMacd.histogram > 0 && ltfMacd.macd > ltfMacd.signal) {
+    longScore += 2; longFactors.push('MACD Bullish Momentum 📈');
+  } else if (ltfMacd.histogram < 0 && ltfMacd.macd < ltfMacd.signal) {
+    shortScore += 2; shortFactors.push('MACD Bearish Momentum 📉');
+  }
+  if (ltfMacd.histogram > 0 && ltfMacd.histogram > ltfMacd.prevHistogram) {
+    longScore += 1; longFactors.push('MACD Histogram Expanding ✅');
+  } else if (ltfMacd.histogram < 0 && ltfMacd.histogram < ltfMacd.prevHistogram) {
+    shortScore += 1; shortFactors.push('MACD Histogram Expanding ✅');
+  }
+
+  // 11. Stochastic RSI Entry Timing — exec TF 15m (Medium Weight)
+  if (execStochRsi.prevK < 20 && execStochRsi.k > execStochRsi.prevK) {
+    longScore += 2; longFactors.push('StochRSI Cross Oversold 🔥');
+  } else if (execStochRsi.prevK > 80 && execStochRsi.k < execStochRsi.prevK) {
+    shortScore += 2; shortFactors.push('StochRSI Cross Overbought 🔥');
+  }
+
+  // 12. HTF Candle Pattern 4H (Medium Weight)
+  if (htfPattern === 'BULLISH_ENGULFING' || htfPattern === 'HAMMER' || htfPattern === 'BULLISH_PIN_BAR') {
+    longScore += 2; longFactors.push(`HTF Pattern: ${htfPattern} 🕯️`);
+  } else if (htfPattern === 'BEARISH_ENGULFING' || htfPattern === 'SHOOTING_STAR' || htfPattern === 'BEARISH_PIN_BAR') {
+    shortScore += 2; shortFactors.push(`HTF Pattern: ${htfPattern} 🕯️`);
+  }
 
   // ── SIGNAL GENERATION ────────────────────────────────────────────────────
   // ADX gate: skip signal if market is ranging (no directional trend)
@@ -239,27 +279,35 @@ async function analyzeAsset(pair, btcTrend) {
 }
 
 async function scanAllPairs() {
-  // 1. Fetch BTC Trend for Market Correlation
-  let btcTrend = 'NEUTRAL';
+  // 1. Fetch BTC Trend — dual TF (1H intraday + 4H macro)
+  let btcTrend1h = 'NEUTRAL';
+  let btcTrend4h = 'NEUTRAL';
   try {
-    const btcKlines = await getKlines('BTCUSDT', '1h', 100);
-    if (btcKlines.length) {
-      const btcCloses = btcKlines.map(c => c.close);
-      const btcStruct = detectStructure(btcKlines);
-      const btcEma50 = calcEMA(btcCloses, 50);
-      const btcEma200 = calcEMA(btcCloses, 200);
-      
-      const curBtcE50 = btcEma50[btcEma50.length - 1];
-      const curBtcE200 = btcEma200[btcEma200.length - 1];
-      
-      if (curBtcE50 > curBtcE200 && btcStruct.trend !== 'DOWNTREND') btcTrend = 'BULLISH';
-      else if (curBtcE50 < curBtcE200 && btcStruct.trend !== 'UPTREND') btcTrend = 'BEARISH';
+    const [btcKlines1h, btcKlines4h] = await Promise.all([
+      getKlines('BTCUSDT', '1h', 100),
+      getKlines('BTCUSDT', '4h', 100),
+    ]);
+
+    if (btcKlines1h.length) {
+      const cl = btcKlines1h.map(c => c.close);
+      const st = detectStructure(btcKlines1h);
+      const e50 = calcEMA(cl, 50), e200 = calcEMA(cl, 200);
+      if (e50[e50.length-1] > e200[e200.length-1] && st.trend !== 'DOWNTREND') btcTrend1h = 'BULLISH';
+      else if (e50[e50.length-1] < e200[e200.length-1] && st.trend !== 'UPTREND') btcTrend1h = 'BEARISH';
+    }
+
+    if (btcKlines4h.length) {
+      const cl = btcKlines4h.map(c => c.close);
+      const st = detectStructure(btcKlines4h);
+      const e50 = calcEMA(cl, 50), e200 = calcEMA(cl, 200);
+      if (e50[e50.length-1] > e200[e200.length-1] && st.trend !== 'DOWNTREND') btcTrend4h = 'BULLISH';
+      else if (e50[e50.length-1] < e200[e200.length-1] && st.trend !== 'UPTREND') btcTrend4h = 'BEARISH';
     }
   } catch (e) {
     console.error('Error fetching BTC trend:', e);
   }
 
-  const results = await Promise.allSettled(PAIRS.map(p => analyzeAsset(p, btcTrend)));
+  const results = await Promise.allSettled(PAIRS.map(p => analyzeAsset(p, btcTrend1h, btcTrend4h)));
   const signals = results
     .filter(r => r.status === 'fulfilled' && r.value !== null)
     .map(r => r.value)
