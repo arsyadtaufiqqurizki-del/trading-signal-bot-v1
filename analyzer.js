@@ -2,8 +2,15 @@ const { scanAllPairs } = require('./scanner');
 const { getGlobalSentiment, getTrendingCoins } = require('./coingecko');
 const { nowWIB, fmt, getSession } = require('./utils');
 
-function formatSignal(signal) {
+function formatSignal(signal, rank) {
   const dateStr = nowWIB();
+  
+  // Progress Bar for Confidence
+  const maxScore = 10;
+  const score = signal.confluenceScore || 0;
+  const filledLength = Math.round((score / maxScore) * 10);
+  const emptyLength = maxScore - filledLength;
+  const progressBar = '█'.repeat(filledLength) + '░'.repeat(emptyLength);
   
   const ms = `HTF: ${signal.htfTrend}, LTF: ${signal.ltfTrend}`;
   const kl = signal.nearLevel 
@@ -26,27 +33,28 @@ function formatSignal(signal) {
   if (signal.divergence) setupType = 'Reversal';
   else if (signal.bos) setupType = 'Breakout';
 
-  return `Crypto Trade Signal – ${dateStr}
+  const tvLink = `https://www.tradingview.com/chart/?symbol=BINANCE:${signal.pair}`;
 
-Pair: ${signal.pair}
-Tipe: ${signal.direction}
+  return `🏆 <b>RANK #${rank} | ${signal.pair}</b>
+────────────────────
+<b>Tipe:</b> ${signal.direction === 'LONG' ? '🟢 LONG' : '🔴 SHORT'}
+<b>Setup:</b> ${setupType}
+<b>Confidence:</b> ${progressBar} ${score}/10 (${confLevel})
 
-Entry Area: ${fmt(signal.entry, 4)}
-Take Profit: ${fmt(signal.tp1, 4)} / ${fmt(signal.tp2, 4)}
-Stop Loss: ${fmt(signal.sl, 4)}
-Risk Reward Ratio: 1:${fmt(signal.rr, 2)}
+<b>🎯 ENTRY AREA:</b> ${fmt(signal.entry, 4)}
+<b>🏁 TAKE PROFIT:</b> ${fmt(signal.tp1, 4)} / ${fmt(signal.tp2, 4)}
+<b>🛑 STOP LOSS:</b> ${fmt(signal.sl, 4)}
+<b>⚖️ RISK REWARD:</b> 1:${fmt(signal.rr, 2)}
 
-Analisis:
+<b>📝 ANALISIS:</b>
+• Market Structure: ${ms}
+• Key Level: ${kl}
+• Konfirmasi: ${conf}
+• Alasan: ${reason}
 
-Market Structure: ${ms}
-Key Level: ${kl}
-Konfirmasi: ${conf}
-Alasan Entry: ${reason}
+📈 <b><a href="${tvLink}">Buka Chart TradingView</a></b>
 
-Confidence Level: ${confLevel}
-Setup Type: ${setupType}
-
-⚠️ Disclaimer: Sinyal ini berbasis analisis probabilitas, bukan jaminan profit. Selalu gunakan manajemen risiko.`;
+⚠️ <i>Disclaimer: Sinyal probabilitas. Gunakan manajemen risiko.</i>`;
 }
 
 async function runAnalysis(bot, chatId, isSilent = false) {
@@ -78,9 +86,18 @@ async function runAnalysis(bot, chatId, isSilent = false) {
       return;
     }
 
-    for (const sig of signals) {
-      const text = formatSignal(sig);
-      await bot.sendMessage(chatId, text);
+    // Sort by confluenceScore descending and take top 3
+    const topSignals = signals
+      .sort((a, b) => (b.confluenceScore || 0) - (a.confluenceScore || 0))
+      .slice(0, 3);
+
+    if (!isSilent) {
+      await bot.sendMessage(chatId, `💎 <b>TOP ${topSignals.length} HIGH PROBABILITY SETUPS</b>\nBerikut adalah setup terbaik berdasarkan skor konfluensi tertinggi:`, { parse_mode: "HTML" });
+    }
+
+    for (let i = 0; i < topSignals.length; i++) {
+      const text = formatSignal(topSignals[i], i + 1);
+      await bot.sendMessage(chatId, text, { parse_mode: "HTML" });
     }
 
   } catch (error) {
