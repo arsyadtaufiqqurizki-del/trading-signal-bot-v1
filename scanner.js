@@ -19,7 +19,7 @@ const PAIRS = [
   { symbol: 'XRPUSDT',  name: 'XRP/USDT',  htf: '4h', ltf: '1h', exec: '15m' },
 ];
 
-async function analyzeAsset(pair) {
+async function analyzeAsset(pair, btcTrend) {
   const [htfCandles, ltfCandles, execCandles] = await Promise.all([
     getKlines(pair.symbol, pair.htf, 200),
     getKlines(pair.symbol, pair.ltf, 200),
@@ -75,6 +75,15 @@ async function analyzeAsset(pair) {
   let longScore = 0, shortScore = 0;
   const longFactors = [], shortFactors = [];
 
+  // 0. BTC Market Correlation (High Weight)
+  if (btcTrend === 'BULLISH') {
+    longScore += 2; longFactors.push('BTC Market Bullish 🚀');
+    shortScore -= 2; // Penalize shorts when captain is bullish
+  } else if (btcTrend === 'BEARISH') {
+    shortScore += 2; shortFactors.push('BTC Market Bearish 📉');
+    longScore -= 2; // Penalize longs when captain is dumping
+  }
+
   // 1. HTF trend alignment (High Weight)
   if (htfBias === 'BULLISH') { longScore += 3; longFactors.push('HTF Bullish Bias 🚀'); }
   if (htfBias === 'BEARISH') { shortScore += 3; shortFactors.push('HTF Bearish Bias 📉'); }
@@ -95,10 +104,14 @@ async function analyzeAsset(pair) {
   if (ltfBos === 'BULLISH_BOS') { longScore += 2; longFactors.push('Bullish BOS Confirmed ✅'); }
   if (ltfBos === 'BEARISH_BOS') { shortScore += 2; shortFactors.push('Bearish BOS Confirmed ✅'); }
 
-  // 6. Volume spike (Low Weight)
+  // 6. Volume spike (Increased Weight for Validation)
   if (ltfVolume) {
-    longScore += 1;  longFactors.push('Volume Spike Detected ⚡');
-    shortScore += 1; shortFactors.push('Volume Spike Detected ⚡');
+    longScore += 2;  longFactors.push('Volume Spike Confirmed ⚡');
+    shortScore += 2; shortFactors.push('Volume Spike Confirmed ⚡');
+  } else {
+    // Penalty for low volume on potential breakout
+    longScore -= 1;
+    shortScore -= 1;
   }
 
   // 7. Order Block Touch (High Weight)
@@ -120,11 +133,10 @@ async function analyzeAsset(pair) {
   if (nearResist)  { shortScore += 1; shortFactors.push(`Near Key Resistance $${fmt(nearResist.price)} ✅`); }
 
   // ── SIGNAL GENERATION ────────────────────────────────────────────────────
-  const MIN_CONFLUENCE = 6; // Increased to 6 due to weighted scoring
+  const MIN_CONFLUENCE = 6; 
   let signal = null;
 
   if (longScore >= MIN_CONFLUENCE && longScore > shortScore) {
-    // Final m15 Confirmation for LONG
     const isLongConfirmed = (execBos === 'BULLISH_BOS' || execDiv === 'BULLISH_DIVERGENCE');
     if (!isLongConfirmed) return null;
 
@@ -147,7 +159,6 @@ async function analyzeAsset(pair) {
       };
     }
   } else if (shortScore >= MIN_CONFLUENCE && shortScore > longScore) {
-    // Final m15 Confirmation for SHORT
     const isShortConfirmed = (execBos === 'BEARISH_BOS' || execDiv === 'BEARISH_DIVERGENCE');
     if (!isShortConfirmed) return null;
 
@@ -175,12 +186,32 @@ async function analyzeAsset(pair) {
 }
 
 async function scanAllPairs() {
-  const results = await Promise.allSettled(PAIRS.map(p => analyzeAsset(p)));
+  // 1. Fetch BTC Trend for Market Correlation
+  let btcTrend = 'NEUTRAL';
+  try {
+    const btcKlines = await getKlines('BTCUSDT', '1h', 100);
+    if (btcKlines.length) {
+      const btcCloses = btcKlines.map(c => c.close);
+      const btcStruct = detectStructure(btcKlines);
+      const btcEma50 = calcEMA(btcCloses, 50);
+      const btcEma200 = calcEMA(btcCloses, 200);
+      
+      const curBtcE50 = btcEma50[btcEma50.length - 1];
+      const curBtcE200 = btcEma200[btcEma200.length - 1];
+      
+      if (curBtcE50 > curBtcE200 && btcStruct.trend !== 'DOWNTREND') btcTrend = 'BULLISH';
+      else if (curBtcE50 < curBtcE200 && btcStruct.trend !== 'UPTREND') btcTrend = 'BEARISH';
+    }
+  } catch (e) {
+    console.error('Error fetching BTC trend:', e);
+  }
+
+  const results = await Promise.allSettled(PAIRS.map(p => analyzeAsset(p, btcTrend)));
   const signals = results
     .filter(r => r.status === 'fulfilled' && r.value !== null)
     .map(r => r.value)
     .sort((a, b) => b.confluenceScore - a.confluenceScore)
-    .slice(0, 2); // max 2 signals per day
+    .slice(0, 2); 
   return signals;
 }
 
