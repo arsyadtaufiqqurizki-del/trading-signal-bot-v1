@@ -3,7 +3,8 @@ const { getKlines } = require('./binance');
 const {
   calcEMA, calcRSI, calcATR, calcADX, calcMACD, calcStochRSI,
   isVolumeSpike, detectStructure, detectBOS,
-  findKeyLevels, detectDivergence, detectFVG, detectOrderBlocks, detectCandlePattern
+  findKeyLevels, detectDivergence, detectFVG, detectOrderBlocks,
+  detectCandlePattern, detectLiquiditySweep
 } = require('./indicators');
 const { fmt } = require('./utils');
 
@@ -18,6 +19,51 @@ const PAIRS = [
   { symbol: 'BNBUSDT',  name: 'BNB/USDT',  htf: '4h', ltf: '1h', exec: '15m' },
   { symbol: 'XRPUSDT',  name: 'XRP/USDT',  htf: '4h', ltf: '1h', exec: '15m' },
 ];
+
+function getSessionInfo() {
+  const wibHour = (new Date().getUTCHours() + 7) % 24;
+  if (wibHour >= 13 && wibHour < 17) return { name: 'London Session 🇬🇧', optimal: true };
+  if (wibHour >= 20 || wibHour < 1)  return { name: 'New York Session 🇺🇸', optimal: true };
+  if (wibHour >= 8  && wibHour < 13) return { name: 'Asian Session 🌏', optimal: false };
+  return { name: 'Off Session 💤', optimal: false };
+}
+
+function calcStructureSL(price, direction, structure, atr) {
+  const buffer = 0.003;
+  if (direction === 'LONG') {
+    const validLows = structure.lows
+      .filter(l => l.price < price)
+      .sort((a, b) => b.idx - a.idx);
+    if (validLows.length > 0) {
+      const sl = validLows[0].price * (1 - buffer);
+      if (price - sl <= atr * 3) return sl;
+    }
+    return price - atr * 1.5;
+  } else {
+    const validHighs = structure.highs
+      .filter(h => h.price > price)
+      .sort((a, b) => b.idx - a.idx);
+    if (validHighs.length > 0) {
+      const sl = validHighs[0].price * (1 + buffer);
+      if (sl - price <= atr * 3) return sl;
+    }
+    return price + atr * 1.5;
+  }
+}
+
+function classifyMarketPhase(adx, atrPct, htfBias) {
+  if (adx > 35 && atrPct > 3)          return 'CLIMAX 🔥';
+  if (adx >= 25 && htfBias === 'BULLISH') return 'MARKUP 📈';
+  if (adx >= 25 && htfBias === 'BEARISH') return 'MARKDOWN 📉';
+  if (adx < 20)                         return 'ACCUMULATION/DISTRIBUTION ⏳';
+  return 'TRANSITION ↔️';
+}
+
+function getRiskSuggestion(score) {
+  if (score >= 13) return '1.5% per trade 💪';
+  if (score >= 10) return '1.0% per trade ✅';
+  return '0.5% per trade ⚠️';
+}
 
 function checkFvgMitigation(fvgs, candles) {
   return fvgs.filter(fvg => {
@@ -86,6 +132,12 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
   const htfPattern   = detectCandlePattern(htfCandles);
 
   const price = ltfCandles[ltfCandles.length - 1].close;
+
+  // Tier 3 — structural additions
+  const ltfSweep    = detectLiquiditySweep(ltfCandles, ltfStruct);
+  const sessionInfo = getSessionInfo();
+  const atrPct      = (ltfAtr / price) * 100;
+
   const curRsi = ltfRsi[ltfRsi.length - 1];
   const curHtfE50  = htfEma50[htfEma50.length - 1];
   const curHtfE200 = htfEma200[htfEma200.length - 1];
@@ -193,10 +245,17 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
     shortScore += 2; shortFactors.push(`HTF Pattern: ${htfPattern} 🕯️`);
   }
 
+  // 13. Liquidity Sweep — Stop Hunt Detection (Highest Weight, setup terkuat)
+  if (ltfSweep === 'BULLISH_SWEEP') { longScore  += 3; longFactors.push('Bullish Liquidity Sweep 🎯'); }
+  if (ltfSweep === 'BEARISH_SWEEP') { shortScore += 3; shortFactors.push('Bearish Liquidity Sweep 🎯'); }
+
   // ── SIGNAL GENERATION ────────────────────────────────────────────────────
   // ADX gate: skip signal if market is ranging (no directional trend)
   if (ltfAdx < 20) return null;
   if (ltfAdx < 25) { longScore -= 1; shortScore -= 1; }
+
+  // Session filter: soft penalty untuk off-hours (noise lebih tinggi, likuiditas rendah)
+  if (!sessionInfo.optimal) { longScore -= 1; shortScore -= 1; }
 
   const MIN_CONFLUENCE = 7;
   let signal = null;
@@ -206,7 +265,8 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
     if (!isLongConfirmed) return null;
 
     const atr = ltfAtr;
-    const sl = parseFloat((price - atr * 1.5).toFixed(price > 1000 ? 0 : 4));
+    const slRaw = calcStructureSL(price, 'LONG', ltfStruct, atr);
+    const sl  = parseFloat(slRaw.toFixed(price > 1000 ? 0 : 4));
     const tp1 = parseFloat((price + atr * 3.0).toFixed(price > 1000 ? 0 : 4));
     const tp2 = parseFloat((price + atr * 5.0).toFixed(price > 1000 ? 0 : 4));
     
@@ -226,15 +286,20 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
     const rrCons = parseFloat(((tp1 - entryConservative) / riskCons).toFixed(2));
 
     if (rrAgg >= 2.2 && sl > 0) {
+      const marketPhase    = classifyMarketPhase(ltfAdx, atrPct, htfBias);
+      const riskSuggestion = getRiskSuggestion(longScore);
       signal = {
         pair: pair.name, direction: 'LONG',
-        entryAggressive, entryConservative, sl, tp1, tp2, 
+        entryAggressive, entryConservative, sl, tp1, tp2,
         rrAgg, rrCons,
         confluenceScore: longScore, factors: [...longFactors, `m15 Confirmation: ${execBos === 'BULLISH_BOS' ? 'BOS' : 'Divergence'} ✅`],
         rsi: curRsi, htfBias, htfTrend: htfStruct.trend, ltfTrend: ltfStruct.trend,
         bos: ltfBos, divergence: ltfDiv, volumeSpike: ltfVolume,
         nearLevel: nearSupport,
         atr, htfEma50: curHtfE50, htfEma200: curHtfE200,
+        liquiditySweep: ltfSweep, marketPhase, riskSuggestion,
+        sessionInfo, adx: ltfAdx,
+        invalidationLevel: sl,
       };
     }
   } else if (shortScore >= MIN_CONFLUENCE && shortScore > longScore) {
@@ -242,7 +307,8 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
     if (!isShortConfirmed) return null;
 
     const atr = ltfAtr;
-    const slShort = parseFloat((price + atr * 1.5).toFixed(price > 1000 ? 0 : 4));
+    const slRawShort = calcStructureSL(price, 'SHORT', ltfStruct, atr);
+    const slShort = parseFloat(slRawShort.toFixed(price > 1000 ? 0 : 4));
     const tp1 = parseFloat((price - atr * 3.0).toFixed(price > 1000 ? 0 : 4));
     const tp2 = parseFloat((price - atr * 5.0).toFixed(price > 1000 ? 0 : 4));
     
@@ -262,15 +328,20 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
     const rrCons = parseFloat(((entryConservative - tp1) / riskCons).toFixed(2));
 
     if (rrAgg >= 2.2 && tp1 > 0) {
+      const marketPhase    = classifyMarketPhase(ltfAdx, atrPct, htfBias);
+      const riskSuggestion = getRiskSuggestion(shortScore);
       signal = {
         pair: pair.name, direction: 'SHORT',
-        entryAggressive, entryConservative, sl: slShort, tp1, tp2, 
+        entryAggressive, entryConservative, sl: slShort, tp1, tp2,
         rrAgg, rrCons,
         confluenceScore: shortScore, factors: [...shortFactors, `m15 Confirmation: ${execBos === 'BEARISH_BOS' ? 'BOS' : 'Divergence'} ✅`],
         rsi: curRsi, htfBias, htfTrend: htfStruct.trend, ltfTrend: ltfStruct.trend,
         bos: ltfBos, divergence: ltfDiv, volumeSpike: ltfVolume,
         nearLevel: nearResist,
         atr, htfEma50: curHtfE50, htfEma200: curHtfE200,
+        liquiditySweep: ltfSweep, marketPhase, riskSuggestion,
+        sessionInfo, adx: ltfAdx,
+        invalidationLevel: slShort,
       };
     }
   }

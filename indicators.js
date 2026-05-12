@@ -184,6 +184,22 @@ function detectOrderBlocks(candles) {
   return obs;
 }
 
+// ── LIQUIDITY SWEEP ──────────────────────────────────────────────────────────
+function detectLiquiditySweep(candles, structure) {
+  if (!structure || candles.length < 3) return null;
+  const recentHigh = structure.highs.length > 0 ? structure.highs[structure.highs.length - 1].price : null;
+  const recentLow  = structure.lows.length  > 0 ? structure.lows[structure.lows.length  - 1].price  : null;
+
+  for (let i = candles.length - 3; i < candles.length - 1; i++) {
+    const c = candles[i], next = candles[i + 1];
+    // Bullish sweep: wick dips below swing low, candle closes back above → stop hunt beli
+    if (recentLow  && c.low  < recentLow  && c.close > recentLow  && next.close > recentLow)  return 'BULLISH_SWEEP';
+    // Bearish sweep: wick spikes above swing high, candle closes back below → stop hunt jual
+    if (recentHigh && c.high > recentHigh && c.close < recentHigh && next.close < recentHigh) return 'BEARISH_SWEEP';
+  }
+  return null;
+}
+
 // ── MACD (12, 26, 9) ─────────────────────────────────────────────────────────
 function calcMACD(closes, fast = 12, slow = 26, signal = 9) {
   const emaFast = calcEMA(closes, fast);
@@ -287,5 +303,6 @@ function calcADX(candles, period = 14) {
 module.exports = {
   calcEMA, calcRSI, calcATR, calcADX, calcMACD, calcStochRSI,
   isVolumeSpike, detectStructure, detectBOS, findKeyLevels,
-  detectDivergence, detectFVG, detectOrderBlocks, detectCandlePattern
+  detectDivergence, detectFVG, detectOrderBlocks, detectCandlePattern,
+  detectLiquiditySweep
 };

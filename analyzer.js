@@ -4,55 +4,60 @@ const { nowWIB, fmt, getSession } = require('./utils');
 
 function formatSignal(signal, rank) {
   const dateStr = nowWIB();
-  
-  // Progress Bar for Confidence
-  const maxScore = 10;
+
+  // Progress bar — cap visual at 20 points as "perfect signal" baseline
   const score = signal.confluenceScore || 0;
-  const filledLength = Math.round((score / maxScore) * 10);
-  const emptyLength = maxScore - filledLength;
-  const progressBar = '█'.repeat(filledLength) + '░'.repeat(emptyLength);
-  
-  const ms = `HTF: ${signal.htfTrend}, LTF: ${signal.ltfTrend}`;
-  const kl = signal.nearLevel 
-    ? `${signal.nearLevel.type} @ ${fmt(signal.nearLevel.price)}` 
+  const filled = Math.min(10, Math.round((score / 20) * 10));
+  const progressBar = '█'.repeat(filled) + '░'.repeat(10 - filled);
+
+  const ms  = `HTF: ${signal.htfTrend}, LTF: ${signal.ltfTrend}`;
+  const kl  = signal.nearLevel
+    ? `${signal.nearLevel.type} @ ${fmt(signal.nearLevel.price)}`
     : 'Menunggu konfirmasi liquidity grab di level terdekat';
   const conf = signal.factors.join(', ');
 
-  let reason = '';
-  if (signal.direction === 'LONG') {
-    reason = `Harga bertahan pada zona support HTF dengan momentum pergeseran ke bullish pada LTF (RSI ${fmt(signal.rsi,1)}). Terdapat konfirmasi technical confluence yang kuat, risk dijaga aman di bawah ATR support level.`;
-  } else {
-    reason = `Harga mengalami rejection kuat pada area resisten HTF, momentum seller mulai mendominasi (RSI ${fmt(signal.rsi,1)}). Entry point optimal dengan rasio risk/reward sehat, SL di atas ATR resisten level.`;
-  }
-
-  let confLevel = 'Medium';
-  if (signal.confluenceScore >= 5) confLevel = 'High';
-  else if (signal.confluenceScore <= 3) confLevel = 'Low';
+  let confLevel = 'Low';
+  if (score >= 10) confLevel = 'Very High';
+  else if (score >= 7) confLevel = 'High';
+  else if (score >= 5) confLevel = 'Medium';
 
   let setupType = 'Trend Continuation';
-  if (signal.divergence) setupType = 'Reversal';
-  else if (signal.bos) setupType = 'Breakout';
+  if (signal.liquiditySweep) setupType = 'Liquidity Sweep Reversal 🎯';
+  else if (signal.divergence) setupType = 'Divergence Reversal';
+  else if (signal.bos)        setupType = 'BOS Breakout';
 
-  const tvLink = `https://www.tradingview.com/chart/?symbol=BINANCE:${signal.pair}`;
+  const sessionWarn = signal.sessionInfo && !signal.sessionInfo.optimal
+    ? `\n⚠️ <i>Di luar sesi optimal — eksekusi dengan hati-hati!</i>` : '';
+
+  const sweepLine = signal.liquiditySweep
+    ? `\n🎯 <b>LIQUIDITY SWEEP TERDETEKSI!</b> Smart money telah sweep ${signal.liquiditySweep === 'BULLISH_SWEEP' ? 'swing low' : 'swing high'} → high-probability reversal.`
+    : '';
+
+  const tvLink = `https://www.tradingview.com/chart/?symbol=BINANCE:${signal.pair.replace('/', '')}`;
 
   return `🏆 <b>RANK #${rank} | ${signal.pair}</b>
 ────────────────────
 <b>Tipe:</b> ${signal.direction === 'LONG' ? '🟢 LONG' : '🔴 SHORT'}
 <b>Setup:</b> ${setupType}
-<b>Confidence:</b> ${progressBar} ${score}/10 (${confLevel})
-
+<b>Session:</b> ${signal.sessionInfo ? signal.sessionInfo.name : '-'}${sessionWarn}
+<b>Market Phase:</b> ${signal.marketPhase || '-'}
+<b>ADX:</b> ${signal.adx ? fmt(signal.adx, 1) : '-'} (Trend Strength)
+<b>Confidence:</b> ${progressBar} ${score} pts (${confLevel})
+${sweepLine}
 🎯 <b>ENTRY STRATEGY:</b>
-• <b>Aggressive:</b> ${fmt(signal.entryAggressive, 4)} (Market) $\rightarrow$ RR 1:${fmt(signal.rrAgg, 2)}
-• <b>Conservative:</b> ${fmt(signal.entryConservative, 4)} (Limit) $\rightarrow$ RR 1:${fmt(signal.rrCons, 2)}
+• <b>Aggressive:</b> ${fmt(signal.entryAggressive, 4)} (Market) → RR 1:${fmt(signal.rrAgg, 2)}
+• <b>Conservative:</b> ${fmt(signal.entryConservative, 4)} (Limit) → RR 1:${fmt(signal.rrCons, 2)}
 
 <b>🛑 STOP LOSS:</b> ${fmt(signal.sl, 4)}
 <b>🏁 TAKE PROFIT:</b> ${fmt(signal.tp1, 4)} / ${fmt(signal.tp2, 4)}
+<b>❌ INVALIDASI:</b> Setup gagal jika 1H close ${signal.direction === 'LONG' ? 'di bawah' : 'di atas'} <b>${fmt(signal.invalidationLevel, 4)}</b>
+
+<b>💰 RISK SUGGESTION:</b> ${signal.riskSuggestion || '0.5% per trade'}
 
 <b>📝 ANALISIS:</b>
 • Market Structure: ${ms}
 • Key Level: ${kl}
 • Konfirmasi: ${conf}
-• Alasan: ${reason}
 
 📈 <b><a href="${tvLink}">Buka Chart TradingView</a></b>
 
