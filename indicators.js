@@ -124,17 +124,30 @@ function detectDivergence(candles, rsi) {
 }
 
 // ── FAIR VALUE GAP (FVG) ────────────────────────────────────────────────────
-function detectFVG(candles) {
+function detectFVG(candles, atr = 0) {
   const fvgs = [];
   if (candles.length < 3) return fvgs;
+  
+  // Min size filter: FVG must be at least 20% of ATR to be significant
+  const minSize = atr * 0.2;
+
   for (let i = 2; i < candles.length; i++) {
     const c1 = candles[i-2];
     const c3 = candles[i];
+    
+    // Bullish FVG
     if (c1.high < c3.low) {
-      fvgs.push({ type: 'BULLISH_FVG', top: c3.low, bottom: c1.high, index: i-1 });
+      const size = c3.low - c1.high;
+      if (size >= minSize) {
+        fvgs.push({ type: 'BULLISH_FVG', top: c3.low, bottom: c1.high, index: i-1, size, mitigated: false });
+      }
     }
+    // Bearish FVG
     if (c1.low > c3.high) {
-      fvgs.push({ type: 'BEARISH_FVG', top: c1.low, bottom: c3.high, index: i-1 });
+      const size = c1.low - c3.high;
+      if (size >= minSize) {
+        fvgs.push({ type: 'BEARISH_FVG', top: c1.low, bottom: c3.high, index: i-1, size, mitigated: false });
+      }
     }
   }
   return fvgs;
@@ -147,18 +160,24 @@ function detectOrderBlocks(candles) {
   const avgBody = candles.slice(-20).reduce((sum, c) => sum + Math.abs(c.close - c.open), 0) / 20;
 
   for (let i = 1; i < candles.length - 2; i++) {
-    // Strong Bullish Move check
-    if (candles[i+1].close > candles[i+1].open && candles[i+2].close > candles[i+2].open && 
-        (candles[i+1].close - candles[i+1].open) > avgBody * 1.5) {
-      if (candles[i].close < candles[i].open) {
-        obs.push({ type: 'BULLISH_OB', top: candles[i].high, bottom: candles[i].low, index: i });
+    const impulsive1 = candles[i+1];
+    const impulsive2 = candles[i+2];
+    const obCandle = candles[i];
+
+    // Strong Bullish Move + Volume Confirmation
+    if (impulsive1.close > impulsive1.open && impulsive2.close > impulsive2.open && 
+        (impulsive1.close - impulsive1.open) > avgBody * 1.5 &&
+        impulsive1.volume > (candles.slice(-20, -1).reduce((s, c) => s + c.volume, 0) / 20)) {
+      if (obCandle.close < obCandle.open) {
+        obs.push({ type: 'BULLISH_OB', top: obCandle.high, bottom: obCandle.low, index: i, mitigated: false });
       }
     }
-    // Strong Bearish Move check
-    if (candles[i+1].close < candles[i+1].open && candles[i+2].close < candles[i+2].open && 
-        (candles[i+1].open - candles[i+1].close) > avgBody * 1.5) {
-      if (candles[i].close > candles[i].open) {
-        obs.push({ type: 'BEARISH_OB', top: candles[i].high, bottom: candles[i].low, index: i });
+    // Strong Bearish Move + Volume Confirmation
+    if (impulsive1.close < impulsive1.open && impulsive2.close < impulsive2.open && 
+        (impulsive1.open - impulsive1.close) > avgBody * 1.5 &&
+        impulsive1.volume > (candles.slice(-20, -1).reduce((s, c) => s + c.volume, 0) / 20)) {
+      if (obCandle.close > obCandle.open) {
+        obs.push({ type: 'BEARISH_OB', top: obCandle.high, bottom: obCandle.low, index: i, mitigated: false });
       }
     }
   }
