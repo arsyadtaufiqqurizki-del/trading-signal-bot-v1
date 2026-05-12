@@ -144,13 +144,27 @@ async function analyzeAsset(pair, btcTrend) {
     const sl = parseFloat((price - atr * 1.5).toFixed(price > 1000 ? 0 : 4));
     const tp1 = parseFloat((price + atr * 3.0).toFixed(price > 1000 ? 0 : 4));
     const tp2 = parseFloat((price + atr * 5.0).toFixed(price > 1000 ? 0 : 4));
-    const risk = price - sl;
-    const rr  = parseFloat(((tp1 - price) / risk).toFixed(2));
+    
+    // Hybrid Entry Calculation
+    const entryAggressive = price;
+    let entryConservative = price;
+    if (nearBullOb) {
+      entryConservative = (nearBullOb.top + nearBullOb.bottom) / 2;
+    } else if (nearBullFvg) {
+      entryConservative = nearBullFvg.top;
+    }
+    entryConservative = parseFloat(entryConservative.toFixed(price > 1000 ? 0 : 4));
 
-    if (rr >= 1.9 && sl > 0) {
+    const riskAgg = entryAggressive - sl;
+    const rrAgg = parseFloat(((tp1 - entryAggressive) / riskAgg).toFixed(2));
+    const riskCons = entryConservative - sl;
+    const rrCons = parseFloat(((tp1 - entryConservative) / riskCons).toFixed(2));
+
+    if (rrAgg >= 1.9 && sl > 0) {
       signal = {
         pair: pair.name, direction: 'LONG',
-        entry: price, sl, tp1, tp2, rr,
+        entryAggressive, entryConservative, sl, tp1, tp2, 
+        rrAgg, rrCons,
         confluenceScore: longScore, factors: [...longFactors, `m15 Confirmation: ${execBos === 'BULLISH_BOS' ? 'BOS' : 'Divergence'} ✅`],
         rsi: curRsi, htfBias, htfTrend: htfStruct.trend, ltfTrend: ltfStruct.trend,
         bos: ltfBos, divergence: ltfDiv, volumeSpike: ltfVolume,
@@ -166,13 +180,27 @@ async function analyzeAsset(pair, btcTrend) {
     const slShort = parseFloat((price + atr * 1.5).toFixed(price > 1000 ? 0 : 4));
     const tp1 = parseFloat((price - atr * 3.0).toFixed(price > 1000 ? 0 : 4));
     const tp2 = parseFloat((price - atr * 5.0).toFixed(price > 1000 ? 0 : 4));
-    const risk = slShort - price;
-    const rr  = parseFloat(((price - tp1) / risk).toFixed(2));
+    
+    // Hybrid Entry Calculation
+    const entryAggressive = price;
+    let entryConservative = price;
+    if (nearBearOb) {
+      entryConservative = (nearBearOb.top + nearBearOb.bottom) / 2;
+    } else if (nearBearFvg) {
+      entryConservative = nearBearFvg.bottom;
+    }
+    entryConservative = parseFloat(entryConservative.toFixed(price > 1000 ? 0 : 4));
 
-    if (rr >= 1.9 && tp1 > 0) {
+    const riskAgg = slShort - entryAggressive;
+    const rrAgg = parseFloat(((entryAggressive - tp1) / riskAgg).toFixed(2));
+    const riskCons = slShort - entryConservative;
+    const rrCons = parseFloat(((entryConservative - tp1) / riskCons).toFixed(2));
+
+    if (rrAgg >= 1.9 && tp1 > 0) {
       signal = {
         pair: pair.name, direction: 'SHORT',
-        entry: price, sl: slShort, tp1, tp2, rr,
+        entryAggressive, entryConservative, sl: slShort, tp1, tp2, 
+        rrAgg, rrCons,
         confluenceScore: shortScore, factors: [...shortFactors, `m15 Confirmation: ${execBos === 'BEARISH_BOS' ? 'BOS' : 'Divergence'} ✅`],
         rsi: curRsi, htfBias, htfTrend: htfStruct.trend, ltfTrend: ltfStruct.trend,
         bos: ltfBos, divergence: ltfDiv, volumeSpike: ltfVolume,

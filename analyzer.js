@@ -41,10 +41,12 @@ function formatSignal(signal, rank) {
 <b>Setup:</b> ${setupType}
 <b>Confidence:</b> ${progressBar} ${score}/10 (${confLevel})
 
-<b>🎯 ENTRY AREA:</b> ${fmt(signal.entry, 4)}
-<b>🏁 TAKE PROFIT:</b> ${fmt(signal.tp1, 4)} / ${fmt(signal.tp2, 4)}
+🎯 <b>ENTRY STRATEGY:</b>
+• <b>Aggressive:</b> ${fmt(signal.entryAggressive, 4)} (Market) $\rightarrow$ RR 1:${fmt(signal.rrAgg, 2)}
+• <b>Conservative:</b> ${fmt(signal.entryConservative, 4)} (Limit) $\rightarrow$ RR 1:${fmt(signal.rrCons, 2)}
+
 <b>🛑 STOP LOSS:</b> ${fmt(signal.sl, 4)}
-<b>⚖️ RISK REWARD:</b> 1:${fmt(signal.rr, 2)}
+<b>🏁 TAKE PROFIT:</b> ${fmt(signal.tp1, 4)} / ${fmt(signal.tp2, 4)}
 
 <b>📝 ANALISIS:</b>
 • Market Structure: ${ms}
