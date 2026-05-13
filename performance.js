@@ -1,33 +1,102 @@
 'use strict';
-const fs   = require('fs');
-const path = require('path');
+const fs    = require('fs');
+const path  = require('path');
+const https = require('https');
 
-const DATA_FILE = path.join(__dirname, 'signals_data.json');
+const ENV_FILE  = path.join(__dirname, '.env');
+const GIST_FILE = 'signals_data.json';
 
-function loadData() {
+function getToken()  { return process.env.GITHUB_TOKEN || ''; }
+function getGistId() { return process.env.GIST_ID || ''; }
+
+// ── GitHub Gist HTTP helper ───────────────────────────────────────────────────
+function gistRequest(method, endpoint, body = null) {
+  return new Promise((resolve, reject) => {
+    const data = body ? JSON.stringify(body) : null;
+    const opts = {
+      hostname: 'api.github.com',
+      path:     endpoint,
+      method,
+      headers: {
+        'Authorization': `token ${getToken()}`,
+        'User-Agent':    'trading-signal-bot',
+        'Accept':        'application/vnd.github.v3+json',
+        'Content-Type':  'application/json',
+        ...(data ? { 'Content-Length': Buffer.byteLength(data) } : {}),
+      },
+    };
+    const req = https.request(opts, res => {
+      let raw = '';
+      res.on('data', c => raw += c);
+      res.on('end', () => {
+        try { resolve(JSON.parse(raw)); } catch { resolve(raw); }
+      });
+    });
+    req.on('error', reject);
+    if (data) req.write(data);
+    req.end();
+  });
+}
+
+// ── Simpan GIST_ID ke .env setelah Gist pertama dibuat ───────────────────────
+function persistGistId(id) {
   try {
-    if (fs.existsSync(DATA_FILE)) return JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+    let env = fs.existsSync(ENV_FILE) ? fs.readFileSync(ENV_FILE, 'utf8') : '';
+    env = env.includes('GIST_ID=')
+      ? env.replace(/GIST_ID=.*/,  `GIST_ID=${id}`)
+      : env + `\nGIST_ID=${id}`;
+    fs.writeFileSync(ENV_FILE, env, 'utf8');
+    process.env.GIST_ID = id;
+    console.log(`[Performance] Gist baru dibuat: ${id}`);
+  } catch (e) {
+    console.error('[Performance] Gagal simpan GIST_ID:', e.message);
+  }
+}
+
+// ── Load data dari Gist ───────────────────────────────────────────────────────
+async function loadData() {
+  const gistId = getGistId();
+  if (!gistId) return { signals: [] };
+  try {
+    const gist = await gistRequest('GET', `/gists/${gistId}`);
+    if (gist.files && gist.files[GIST_FILE]) {
+      return JSON.parse(gist.files[GIST_FILE].content);
+    }
   } catch (e) {
     console.error('[Performance] Load error:', e.message);
   }
   return { signals: [] };
 }
 
-function saveData(data) {
+// ── Simpan data ke Gist (create jika belum ada) ───────────────────────────────
+async function saveData(data) {
+  const content = JSON.stringify(data, null, 2);
   try {
-    fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), 'utf8');
+    if (!getGistId()) {
+      const result = await gistRequest('POST', '/gists', {
+        description: 'Trading Bot — Signal Performance Data',
+        public: false,
+        files: { [GIST_FILE]: { content } },
+      });
+      if (result.id) persistGistId(result.id);
+    } else {
+      await gistRequest('PATCH', `/gists/${getGistId()}`, {
+        files: { [GIST_FILE]: { content } },
+      });
+    }
   } catch (e) {
     console.error('[Performance] Save error:', e.message);
   }
 }
 
+// ── Normalisasi nama pair ─────────────────────────────────────────────────────
 function normalizePair(input) {
   return input.toUpperCase().replace('/', '').replace('USDT', '');
 }
 
-// Dipanggil otomatis saat bot kirim sinyal
-function saveSignal(signal) {
-  const data = loadData();
+// ── Dipanggil otomatis saat bot kirim sinyal via /high ────────────────────────
+async function saveSignal(signal) {
+  const data = await loadData();
 
   let setupType = 'Trend Continuation';
   if (signal.liquiditySweep) setupType = 'Liquidity Sweep';
@@ -55,17 +124,16 @@ function saveSignal(signal) {
     pnl:             null,
   });
 
-  saveData(data);
+  await saveData(data);
 }
 
-// Dipanggil via /result — update hasil trade
-function updateResult(pairInput, directionInput, resultInput) {
-  const data      = loadData();
+// ── Dipanggil via /result ─────────────────────────────────────────────────────
+async function updateResult(pairInput, directionInput, resultInput) {
+  const data      = await loadData();
   const pairKey   = normalizePair(pairInput);
   const direction = directionInput.toUpperCase();
   const result    = resultInput.toUpperCase();
 
-  // Cari sinyal OPEN terbaru untuk pair + direction ini
   let targetIdx = -1;
   for (let i = data.signals.length - 1; i >= 0; i--) {
     const s = data.signals[i];
@@ -83,16 +151,15 @@ function updateResult(pairInput, directionInput, resultInput) {
   if      (result === 'TP1' && risk > 0) pnl = parseFloat(((Math.abs(signal.tp1 - signal.entry)) / risk).toFixed(2));
   else if (result === 'TP2' && risk > 0) pnl = parseFloat(((Math.abs(signal.tp2 - signal.entry)) / risk).toFixed(2));
   else if (result === 'SL')              pnl = -1;
-  else if (result === 'BE')              pnl = 0;
 
   data.signals[targetIdx] = { ...signal, status: 'CLOSED', result, closedAt: new Date().toISOString(), pnl };
-  saveData(data);
+  await saveData(data);
   return data.signals[targetIdx];
 }
 
-// Dipanggil via /stats
-function getStats(days = 30) {
-  const data   = loadData();
+// ── Dipanggil via /stats ──────────────────────────────────────────────────────
+async function getStats(days = 30) {
+  const data   = await loadData();
   const cutoff = days === 0 ? new Date(0) : new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
   const closed = data.signals.filter(s => s.status === 'CLOSED' && new Date(s.sentAt) >= cutoff);
@@ -106,7 +173,6 @@ function getStats(days = 30) {
   const winRate = ((wins.length / closed.length) * 100).toFixed(1);
   const totalPnl = closed.reduce((sum, s) => sum + (s.pnl || 0), 0).toFixed(2);
 
-  // Per pair
   const pairMap = {};
   closed.forEach(s => {
     if (!pairMap[s.pair]) pairMap[s.pair] = { wins: 0, total: 0, pnl: 0 };
@@ -115,7 +181,6 @@ function getStats(days = 30) {
     if (s.result === 'TP1' || s.result === 'TP2') pairMap[s.pair].wins++;
   });
 
-  // Per setup type
   const setupMap = {};
   closed.forEach(s => {
     const st = s.setupType || 'Unknown';
@@ -124,7 +189,6 @@ function getStats(days = 30) {
     if (s.result === 'TP1' || s.result === 'TP2') setupMap[st].wins++;
   });
 
-  // Per session
   const sessionMap = {};
   closed.forEach(s => {
     const sess = s.session || 'Unknown';
@@ -136,9 +200,10 @@ function getStats(days = 30) {
   return { days, closed, open, wins, losses, breaks, winRate, totalPnl, pairMap, setupMap, sessionMap, empty: false };
 }
 
-// Dipanggil via /pending
-function getPending() {
-  return loadData().signals.filter(s => s.status === 'OPEN');
+// ── Dipanggil via /pending ────────────────────────────────────────────────────
+async function getPending() {
+  const data = await loadData();
+  return data.signals.filter(s => s.status === 'OPEN');
 }
 
 module.exports = { saveSignal, updateResult, getStats, getPending };

@@ -149,7 +149,7 @@ module.exports = async (req, res) => {
             await bot.sendMessage(chatId, `❌ Outcome harus: <b>TP1</b>, <b>TP2</b>, <b>SL</b>, atau <b>BE</b>.`, { parse_mode: 'HTML' });
           } else {
             const { updateResult } = require('../performance');
-            const updated = updateResult(pair, direction, result);
+            const updated = await updateResult(pair, direction, result);
 
             if (!updated) {
               await bot.sendMessage(chatId,
@@ -180,7 +180,7 @@ module.exports = async (req, res) => {
         else if (parts[1] && !isNaN(parts[1])) days = parseInt(parts[1]);
 
         const { getStats } = require('../performance');
-        const stats = getStats(days);
+        const stats = await getStats(days);
 
         if (stats.empty) {
           const pendingInfo = stats.open.length > 0
@@ -235,7 +235,7 @@ module.exports = async (req, res) => {
 
       } else if (text.startsWith('/pending')) {
         const { getPending } = require('../performance');
-        const pending = getPending();
+        const pending = await getPending();
 
         if (pending.length === 0) {
           await bot.sendMessage(chatId,
