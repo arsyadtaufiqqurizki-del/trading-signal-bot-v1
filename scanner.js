@@ -15,9 +15,13 @@ const PAIRS = [
   { symbol: 'HYPEUSDT', name: 'HYPE/USDT', htf: '4h', ltf: '1h', exec: '15m' },
   { symbol: 'TAOUSDT',  name: 'TAO/USDT',  htf: '4h', ltf: '1h', exec: '15m' },
   { symbol: 'SUIUSDT',  name: 'SUI/USDT',  htf: '4h', ltf: '1h', exec: '15m' },
-  { symbol: 'DOGEUSDT', name: 'DOGE/USDT',  htf: '4h', ltf: '1h', exec: '15m' },
+  { symbol: 'DOGEUSDT', name: 'DOGE/USDT', htf: '4h', ltf: '1h', exec: '15m' },
   { symbol: 'BNBUSDT',  name: 'BNB/USDT',  htf: '4h', ltf: '1h', exec: '15m' },
   { symbol: 'XRPUSDT',  name: 'XRP/USDT',  htf: '4h', ltf: '1h', exec: '15m' },
+  { symbol: 'ADAUSDT',  name: 'ADA/USDT',  htf: '4h', ltf: '1h', exec: '15m' },
+  { symbol: 'LITUSDT',  name: 'LIT/USDT',  htf: '4h', ltf: '1h', exec: '15m' },
+  { symbol: 'ZECUSDT',  name: 'ZEC/USDT',  htf: '4h', ltf: '1h', exec: '15m' },
+  { symbol: 'LINKUSDT', name: 'LINK/USDT', htf: '4h', ltf: '1h', exec: '15m' },
 ];
 
 function getSessionInfo() {
@@ -383,7 +387,7 @@ async function scanAllPairs() {
     .filter(r => r.status === 'fulfilled' && r.value !== null)
     .map(r => r.value)
     .sort((a, b) => b.confluenceScore - a.confluenceScore)
-    .slice(0, 2); 
+    .slice(0, 3);
   return signals;
 }
 
