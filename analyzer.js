@@ -36,9 +36,15 @@ function formatSignal(signal, rank) {
 
   const tvLink = `https://www.tradingview.com/chart/?symbol=BINANCE:${signal.pair.replace('/', '')}`;
 
+  const tierLabel = signal.tier === 4 ? '⚠️ Tier 4 — Volatil, size kecil'
+    : signal.tier === 3 ? '🔶 Tier 3 — Altcoin Established'
+    : signal.tier === 2 ? '🔷 Tier 2 — Large Cap'
+    : '💎 Tier 1 — Mega Cap';
+
   return `🏆 <b>RANK #${rank} | ${signal.pair}</b>
 ────────────────────
 <b>Tipe:</b> ${signal.direction === 'LONG' ? '🟢 LONG' : '🔴 SHORT'}
+<b>Kategori:</b> ${tierLabel}
 <b>Setup:</b> ${setupType}
 <b>Session:</b> ${signal.sessionInfo ? signal.sessionInfo.name : '-'}${sessionWarn}
 <b>Market Phase:</b> ${signal.marketPhase || '-'}

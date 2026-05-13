@@ -8,61 +8,68 @@ const {
 } = require('./indicators');
 const { fmt } = require('./utils');
 
+const TIER_CONFIG = {
+  1: { minConfluence: 7, adxMin: 20, minRR: 2.2, requireExecConfirm: true  },
+  2: { minConfluence: 7, adxMin: 20, minRR: 2.2, requireExecConfirm: true  },
+  3: { minConfluence: 6, adxMin: 17, minRR: 2.0, requireExecConfirm: true  },
+  4: { minConfluence: 5, adxMin: 15, minRR: 1.8, requireExecConfirm: false },
+};
+
 const PAIRS = [
   // Tier 1 — Mega Cap
-  { symbol: 'BTCUSDT',       name: 'BTC/USDT',   htf: '4h', ltf: '1h', exec: '15m' },
-  { symbol: 'ETHUSDT',       name: 'ETH/USDT',   htf: '4h', ltf: '1h', exec: '15m' },
-  { symbol: 'SOLUSDT',       name: 'SOL/USDT',   htf: '4h', ltf: '1h', exec: '15m' },
-  { symbol: 'BNBUSDT',       name: 'BNB/USDT',   htf: '4h', ltf: '1h', exec: '15m' },
-  { symbol: 'XRPUSDT',       name: 'XRP/USDT',   htf: '4h', ltf: '1h', exec: '15m' },
+  { symbol: 'BTCUSDT',       name: 'BTC/USDT',    htf: '4h', ltf: '1h', exec: '15m', tier: 1 },
+  { symbol: 'ETHUSDT',       name: 'ETH/USDT',    htf: '4h', ltf: '1h', exec: '15m', tier: 1 },
+  { symbol: 'SOLUSDT',       name: 'SOL/USDT',    htf: '4h', ltf: '1h', exec: '15m', tier: 1 },
+  { symbol: 'BNBUSDT',       name: 'BNB/USDT',    htf: '4h', ltf: '1h', exec: '15m', tier: 1 },
+  { symbol: 'XRPUSDT',       name: 'XRP/USDT',    htf: '4h', ltf: '1h', exec: '15m', tier: 1 },
   // Tier 2 — Large Cap
-  { symbol: 'DOGEUSDT',      name: 'DOGE/USDT',  htf: '4h', ltf: '1h', exec: '15m' },
-  { symbol: 'ADAUSDT',       name: 'ADA/USDT',   htf: '4h', ltf: '1h', exec: '15m' },
-  { symbol: 'AVAXUSDT',      name: 'AVAX/USDT',  htf: '4h', ltf: '1h', exec: '15m' },
-  { symbol: 'LINKUSDT',      name: 'LINK/USDT',  htf: '4h', ltf: '1h', exec: '15m' },
-  { symbol: 'SUIUSDT',       name: 'SUI/USDT',   htf: '4h', ltf: '1h', exec: '15m' },
-  { symbol: 'DOTUSDT',       name: 'DOT/USDT',   htf: '4h', ltf: '1h', exec: '15m' },
-  { symbol: 'TRXUSDT',       name: 'TRX/USDT',   htf: '4h', ltf: '1h', exec: '15m' },
-  { symbol: 'NEARUSDT',      name: 'NEAR/USDT',  htf: '4h', ltf: '1h', exec: '15m' },
-  { symbol: 'APTUSDT',       name: 'APT/USDT',   htf: '4h', ltf: '1h', exec: '15m' },
-  { symbol: 'TONUSDT',       name: 'TON/USDT',   htf: '4h', ltf: '1h', exec: '15m' },
+  { symbol: 'DOGEUSDT',      name: 'DOGE/USDT',   htf: '4h', ltf: '1h', exec: '15m', tier: 2 },
+  { symbol: 'ADAUSDT',       name: 'ADA/USDT',    htf: '4h', ltf: '1h', exec: '15m', tier: 2 },
+  { symbol: 'AVAXUSDT',      name: 'AVAX/USDT',   htf: '4h', ltf: '1h', exec: '15m', tier: 2 },
+  { symbol: 'LINKUSDT',      name: 'LINK/USDT',   htf: '4h', ltf: '1h', exec: '15m', tier: 2 },
+  { symbol: 'SUIUSDT',       name: 'SUI/USDT',    htf: '4h', ltf: '1h', exec: '15m', tier: 2 },
+  { symbol: 'DOTUSDT',       name: 'DOT/USDT',    htf: '4h', ltf: '1h', exec: '15m', tier: 2 },
+  { symbol: 'TRXUSDT',       name: 'TRX/USDT',    htf: '4h', ltf: '1h', exec: '15m', tier: 2 },
+  { symbol: 'NEARUSDT',      name: 'NEAR/USDT',   htf: '4h', ltf: '1h', exec: '15m', tier: 2 },
+  { symbol: 'APTUSDT',       name: 'APT/USDT',    htf: '4h', ltf: '1h', exec: '15m', tier: 2 },
+  { symbol: 'TONUSDT',       name: 'TON/USDT',    htf: '4h', ltf: '1h', exec: '15m', tier: 2 },
   // Tier 3 — Established Altcoins
-  { symbol: 'LTCUSDT',       name: 'LTC/USDT',   htf: '4h', ltf: '1h', exec: '15m' },
-  { symbol: 'ATOMUSDT',      name: 'ATOM/USDT',  htf: '4h', ltf: '1h', exec: '15m' },
-  { symbol: 'INJUSDT',       name: 'INJ/USDT',   htf: '4h', ltf: '1h', exec: '15m' },
-  { symbol: 'OPUSDT',        name: 'OP/USDT',    htf: '4h', ltf: '1h', exec: '15m' },
-  { symbol: 'ARBUSDT',       name: 'ARB/USDT',   htf: '4h', ltf: '1h', exec: '15m' },
-  { symbol: 'UNIUSDT',       name: 'UNI/USDT',   htf: '4h', ltf: '1h', exec: '15m' },
-  { symbol: 'AAVEUSDT',      name: 'AAVE/USDT',  htf: '4h', ltf: '1h', exec: '15m' },
-  { symbol: 'LDOUSDT',       name: 'LDO/USDT',   htf: '4h', ltf: '1h', exec: '15m' },
-  { symbol: 'HYPEUSDT',      name: 'HYPE/USDT',  htf: '4h', ltf: '1h', exec: '15m' },
-  { symbol: 'TAOUSDT',       name: 'TAO/USDT',   htf: '4h', ltf: '1h', exec: '15m' },
-  { symbol: 'FETUSDT',       name: 'FET/USDT',   htf: '4h', ltf: '1h', exec: '15m' },
-  { symbol: 'RUNEUSDT',      name: 'RUNE/USDT',  htf: '4h', ltf: '1h', exec: '15m' },
-  { symbol: 'STXUSDT',       name: 'STX/USDT',   htf: '4h', ltf: '1h', exec: '15m' },
-  { symbol: 'JUPUSDT',       name: 'JUP/USDT',   htf: '4h', ltf: '1h', exec: '15m' },
-  { symbol: 'FILUSDT',       name: 'FIL/USDT',   htf: '4h', ltf: '1h', exec: '15m' },
+  { symbol: 'LTCUSDT',       name: 'LTC/USDT',    htf: '4h', ltf: '1h', exec: '15m', tier: 3 },
+  { symbol: 'ATOMUSDT',      name: 'ATOM/USDT',   htf: '4h', ltf: '1h', exec: '15m', tier: 3 },
+  { symbol: 'INJUSDT',       name: 'INJ/USDT',    htf: '4h', ltf: '1h', exec: '15m', tier: 3 },
+  { symbol: 'OPUSDT',        name: 'OP/USDT',     htf: '4h', ltf: '1h', exec: '15m', tier: 3 },
+  { symbol: 'ARBUSDT',       name: 'ARB/USDT',    htf: '4h', ltf: '1h', exec: '15m', tier: 3 },
+  { symbol: 'UNIUSDT',       name: 'UNI/USDT',    htf: '4h', ltf: '1h', exec: '15m', tier: 3 },
+  { symbol: 'AAVEUSDT',      name: 'AAVE/USDT',   htf: '4h', ltf: '1h', exec: '15m', tier: 3 },
+  { symbol: 'LDOUSDT',       name: 'LDO/USDT',    htf: '4h', ltf: '1h', exec: '15m', tier: 3 },
+  { symbol: 'HYPEUSDT',      name: 'HYPE/USDT',   htf: '4h', ltf: '1h', exec: '15m', tier: 3 },
+  { symbol: 'TAOUSDT',       name: 'TAO/USDT',    htf: '4h', ltf: '1h', exec: '15m', tier: 3 },
+  { symbol: 'FETUSDT',       name: 'FET/USDT',    htf: '4h', ltf: '1h', exec: '15m', tier: 3 },
+  { symbol: 'RUNEUSDT',      name: 'RUNE/USDT',   htf: '4h', ltf: '1h', exec: '15m', tier: 3 },
+  { symbol: 'STXUSDT',       name: 'STX/USDT',    htf: '4h', ltf: '1h', exec: '15m', tier: 3 },
+  { symbol: 'JUPUSDT',       name: 'JUP/USDT',    htf: '4h', ltf: '1h', exec: '15m', tier: 3 },
+  { symbol: 'FILUSDT',       name: 'FIL/USDT',    htf: '4h', ltf: '1h', exec: '15m', tier: 3 },
   // Tier 4 — High Momentum
-  { symbol: 'WIFUSDT',       name: 'WIF/USDT',   htf: '4h', ltf: '1h', exec: '15m' },
-  { symbol: '1000PEPEUSDT',  name: 'PEPE/USDT',  htf: '4h', ltf: '1h', exec: '15m' },
-  { symbol: '1000SHIBUSDT',  name: 'SHIB/USDT',  htf: '4h', ltf: '1h', exec: '15m' },
-  { symbol: '1000BONKUSDT',  name: 'BONK/USDT',  htf: '4h', ltf: '1h', exec: '15m' },
-  { symbol: 'RENDERUSDT',    name: 'RENDER/USDT', htf: '4h', ltf: '1h', exec: '15m' },
-  { symbol: 'ENAUSDT',       name: 'ENA/USDT',   htf: '4h', ltf: '1h', exec: '15m' },
-  { symbol: 'TIAUSDT',       name: 'TIA/USDT',   htf: '4h', ltf: '1h', exec: '15m' },
-  { symbol: 'SEIUSDT',       name: 'SEI/USDT',   htf: '4h', ltf: '1h', exec: '15m' },
-  { symbol: 'EIGENUSDT',     name: 'EIGEN/USDT', htf: '4h', ltf: '1h', exec: '15m' },
-  { symbol: 'HBARUSDT',      name: 'HBAR/USDT',  htf: '4h', ltf: '1h', exec: '15m' },
-  { symbol: 'WLDUSDT',       name: 'WLD/USDT',   htf: '4h', ltf: '1h', exec: '15m' },
-  { symbol: 'GMXUSDT',       name: 'GMX/USDT',   htf: '4h', ltf: '1h', exec: '15m' },
-  { symbol: 'DYDXUSDT',      name: 'DYDX/USDT',  htf: '4h', ltf: '1h', exec: '15m' },
-  { symbol: 'NOTUSDT',       name: 'NOT/USDT',   htf: '4h', ltf: '1h', exec: '15m' },
-  { symbol: 'STRKUSDT',      name: 'STRK/USDT',  htf: '4h', ltf: '1h', exec: '15m' },
-  { symbol: 'ZKUSDT',        name: 'ZK/USDT',    htf: '4h', ltf: '1h', exec: '15m' },
-  { symbol: 'MATICUSDT',     name: 'MATIC/USDT', htf: '4h', ltf: '1h', exec: '15m' },
-  { symbol: 'FTMUSDT',       name: 'FTM/USDT',   htf: '4h', ltf: '1h', exec: '15m' },
-  { symbol: 'SNXUSDT',       name: 'SNX/USDT',   htf: '4h', ltf: '1h', exec: '15m' },
-  { symbol: 'ZECUSDT',       name: 'ZEC/USDT',   htf: '4h', ltf: '1h', exec: '15m' },
+  { symbol: 'WIFUSDT',       name: 'WIF/USDT',    htf: '4h', ltf: '1h', exec: '15m', tier: 4 },
+  { symbol: '1000PEPEUSDT',  name: 'PEPE/USDT',   htf: '4h', ltf: '1h', exec: '15m', tier: 4 },
+  { symbol: '1000SHIBUSDT',  name: 'SHIB/USDT',   htf: '4h', ltf: '1h', exec: '15m', tier: 4 },
+  { symbol: '1000BONKUSDT',  name: 'BONK/USDT',   htf: '4h', ltf: '1h', exec: '15m', tier: 4 },
+  { symbol: 'RENDERUSDT',    name: 'RENDER/USDT',  htf: '4h', ltf: '1h', exec: '15m', tier: 4 },
+  { symbol: 'ENAUSDT',       name: 'ENA/USDT',    htf: '4h', ltf: '1h', exec: '15m', tier: 4 },
+  { symbol: 'TIAUSDT',       name: 'TIA/USDT',    htf: '4h', ltf: '1h', exec: '15m', tier: 4 },
+  { symbol: 'SEIUSDT',       name: 'SEI/USDT',    htf: '4h', ltf: '1h', exec: '15m', tier: 4 },
+  { symbol: 'EIGENUSDT',     name: 'EIGEN/USDT',  htf: '4h', ltf: '1h', exec: '15m', tier: 4 },
+  { symbol: 'HBARUSDT',      name: 'HBAR/USDT',   htf: '4h', ltf: '1h', exec: '15m', tier: 4 },
+  { symbol: 'WLDUSDT',       name: 'WLD/USDT',    htf: '4h', ltf: '1h', exec: '15m', tier: 4 },
+  { symbol: 'GMXUSDT',       name: 'GMX/USDT',    htf: '4h', ltf: '1h', exec: '15m', tier: 4 },
+  { symbol: 'DYDXUSDT',      name: 'DYDX/USDT',   htf: '4h', ltf: '1h', exec: '15m', tier: 4 },
+  { symbol: 'NOTUSDT',       name: 'NOT/USDT',    htf: '4h', ltf: '1h', exec: '15m', tier: 4 },
+  { symbol: 'STRKUSDT',      name: 'STRK/USDT',   htf: '4h', ltf: '1h', exec: '15m', tier: 4 },
+  { symbol: 'ZKUSDT',        name: 'ZK/USDT',     htf: '4h', ltf: '1h', exec: '15m', tier: 4 },
+  { symbol: 'MATICUSDT',     name: 'MATIC/USDT',  htf: '4h', ltf: '1h', exec: '15m', tier: 4 },
+  { symbol: 'FTMUSDT',       name: 'FTM/USDT',    htf: '4h', ltf: '1h', exec: '15m', tier: 4 },
+  { symbol: 'SNXUSDT',       name: 'SNX/USDT',    htf: '4h', ltf: '1h', exec: '15m', tier: 4 },
+  { symbol: 'ZECUSDT',       name: 'ZEC/USDT',    htf: '4h', ltf: '1h', exec: '15m', tier: 4 },
 ];
 
 function getSessionInfo() {
@@ -295,19 +302,20 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
   if (ltfSweep === 'BEARISH_SWEEP') { shortScore += 3; shortFactors.push('Bearish Liquidity Sweep 🎯'); }
 
   // ── SIGNAL GENERATION ────────────────────────────────────────────────────
-  // ADX gate: skip signal if market is ranging (no directional trend)
-  if (ltfAdx < 20) return null;
-  if (ltfAdx < 25) { longScore -= 1; shortScore -= 1; }
+  const cfg = TIER_CONFIG[pair.tier] || TIER_CONFIG[1];
+
+  // ADX gate: tier-specific minimum trend strength
+  if (ltfAdx < cfg.adxMin) return null;
+  if (ltfAdx < cfg.adxMin + 5) { longScore -= 1; shortScore -= 1; }
 
   // Session filter: soft penalty untuk off-hours (noise lebih tinggi, likuiditas rendah)
   if (!sessionInfo.optimal) { longScore -= 1; shortScore -= 1; }
 
-  const MIN_CONFLUENCE = 7;
   let signal = null;
 
-  if (longScore >= MIN_CONFLUENCE && longScore > shortScore) {
+  if (longScore >= cfg.minConfluence && longScore > shortScore) {
     const isLongConfirmed = (execBos === 'BULLISH_BOS' || execDiv === 'BULLISH_DIVERGENCE');
-    if (!isLongConfirmed) return null;
+    if (cfg.requireExecConfirm && !isLongConfirmed) return null;
 
     const atr = ltfAtr;
     const slRaw = calcStructureSL(price, 'LONG', ltfStruct, atr);
@@ -330,14 +338,18 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
     const riskCons = entryConservative - sl;
     const rrCons = parseFloat(((tp1 - entryConservative) / riskCons).toFixed(2));
 
-    if (rrAgg >= 2.2 && sl > 0) {
+    const execConfirmLabel = isLongConfirmed
+      ? `m15 Confirmation: ${execBos === 'BULLISH_BOS' ? 'BOS' : 'Divergence'} ✅`
+      : `m15 Confirmation: Score-based (T${pair.tier}) ⚠️`;
+
+    if (rrAgg >= cfg.minRR && sl > 0) {
       const marketPhase    = classifyMarketPhase(ltfAdx, atrPct, htfBias);
       const riskSuggestion = getRiskSuggestion(longScore);
       signal = {
-        pair: pair.name, direction: 'LONG',
+        pair: pair.name, direction: 'LONG', tier: pair.tier,
         entryAggressive, entryConservative, sl, tp1, tp2,
         rrAgg, rrCons,
-        confluenceScore: longScore, factors: [...longFactors, `m15 Confirmation: ${execBos === 'BULLISH_BOS' ? 'BOS' : 'Divergence'} ✅`],
+        confluenceScore: longScore, factors: [...longFactors, execConfirmLabel],
         rsi: curRsi, htfBias, htfTrend: htfStruct.trend, ltfTrend: ltfStruct.trend,
         bos: ltfBos, divergence: ltfDiv, volumeSpike: ltfVolume,
         nearLevel: nearSupport,
@@ -347,9 +359,9 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
         invalidationLevel: sl,
       };
     }
-  } else if (shortScore >= MIN_CONFLUENCE && shortScore > longScore) {
+  } else if (shortScore >= cfg.minConfluence && shortScore > longScore) {
     const isShortConfirmed = (execBos === 'BEARISH_BOS' || execDiv === 'BEARISH_DIVERGENCE');
-    if (!isShortConfirmed) return null;
+    if (cfg.requireExecConfirm && !isShortConfirmed) return null;
 
     const atr = ltfAtr;
     const slRawShort = calcStructureSL(price, 'SHORT', ltfStruct, atr);
@@ -372,14 +384,18 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
     const riskCons = slShort - entryConservative;
     const rrCons = parseFloat(((entryConservative - tp1) / riskCons).toFixed(2));
 
-    if (rrAgg >= 2.2 && tp1 > 0) {
+    const execConfirmLabel = isShortConfirmed
+      ? `m15 Confirmation: ${execBos === 'BEARISH_BOS' ? 'BOS' : 'Divergence'} ✅`
+      : `m15 Confirmation: Score-based (T${pair.tier}) ⚠️`;
+
+    if (rrAgg >= cfg.minRR && tp1 > 0) {
       const marketPhase    = classifyMarketPhase(ltfAdx, atrPct, htfBias);
       const riskSuggestion = getRiskSuggestion(shortScore);
       signal = {
-        pair: pair.name, direction: 'SHORT',
+        pair: pair.name, direction: 'SHORT', tier: pair.tier,
         entryAggressive, entryConservative, sl: slShort, tp1, tp2,
         rrAgg, rrCons,
-        confluenceScore: shortScore, factors: [...shortFactors, `m15 Confirmation: ${execBos === 'BEARISH_BOS' ? 'BOS' : 'Divergence'} ✅`],
+        confluenceScore: shortScore, factors: [...shortFactors, execConfirmLabel],
         rsi: curRsi, htfBias, htfTrend: htfStruct.trend, ltfTrend: ltfStruct.trend,
         bos: ltfBos, divergence: ltfDiv, volumeSpike: ltfVolume,
         nearLevel: nearResist,
