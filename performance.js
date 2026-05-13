@@ -1,13 +1,10 @@
 'use strict';
-const fs    = require('fs');
-const path  = require('path');
 const https = require('https');
 
-const ENV_FILE  = path.join(__dirname, '.env');
-const GIST_FILE = 'signals_data.json';
+const GIST_FILE  = 'signals_data.json';
+const GIST_DESC  = 'Trading Bot — Signal Performance Data';
 
-function getToken()  { return process.env.GITHUB_TOKEN || ''; }
-function getGistId() { return process.env.GIST_ID || ''; }
+function getToken() { return process.env.GITHUB_TOKEN || ''; }
 
 // ── GitHub Gist HTTP helper ───────────────────────────────────────────────────
 function gistRequest(method, endpoint, body = null) {
@@ -38,27 +35,43 @@ function gistRequest(method, endpoint, body = null) {
   });
 }
 
-// ── Simpan GIST_ID ke .env setelah Gist pertama dibuat ───────────────────────
-function persistGistId(id) {
+// ── Resolve Gist ID: cari yang sudah ada, kalau tidak ada buat baru ──────────
+async function resolveGistId() {
+  if (process.env.GIST_ID) return process.env.GIST_ID;
   try {
-    let env = fs.existsSync(ENV_FILE) ? fs.readFileSync(ENV_FILE, 'utf8') : '';
-    env = env.includes('GIST_ID=')
-      ? env.replace(/GIST_ID=.*/,  `GIST_ID=${id}`)
-      : env + `\nGIST_ID=${id}`;
-    fs.writeFileSync(ENV_FILE, env, 'utf8');
-    process.env.GIST_ID = id;
-    console.log(`[Performance] Gist baru dibuat: ${id}`);
+    // Cari Gist yang sudah ada berdasarkan deskripsi
+    const list = await gistRequest('GET', '/gists?per_page=100');
+    if (Array.isArray(list)) {
+      const found = list.find(g => g.description === GIST_DESC && g.files[GIST_FILE]);
+      if (found) {
+        process.env.GIST_ID = found.id;
+        console.log(`[Performance] Gist ditemukan: ${found.id}`);
+        return found.id;
+      }
+    }
+    // Belum ada — buat Gist baru
+    const created = await gistRequest('POST', '/gists', {
+      description: GIST_DESC,
+      public: false,
+      files: { [GIST_FILE]: { content: JSON.stringify({ signals: [] }, null, 2) } },
+    });
+    if (created.id) {
+      process.env.GIST_ID = created.id;
+      console.log(`[Performance] Gist baru dibuat: ${created.id}`);
+      return created.id;
+    }
   } catch (e) {
-    console.error('[Performance] Gagal simpan GIST_ID:', e.message);
+    console.error('[Performance] resolveGistId error:', e.message);
   }
+  return null;
 }
 
 // ── Load data dari Gist ───────────────────────────────────────────────────────
 async function loadData() {
-  const gistId = getGistId();
-  if (!gistId) return { signals: [] };
+  const id = await resolveGistId();
+  if (!id) return { signals: [] };
   try {
-    const gist = await gistRequest('GET', `/gists/${gistId}`);
+    const gist = await gistRequest('GET', `/gists/${id}`);
     if (gist.files && gist.files[GIST_FILE]) {
       return JSON.parse(gist.files[GIST_FILE].content);
     }
@@ -68,22 +81,14 @@ async function loadData() {
   return { signals: [] };
 }
 
-// ── Simpan data ke Gist (create jika belum ada) ───────────────────────────────
+// ── Simpan data ke Gist ───────────────────────────────────────────────────────
 async function saveData(data) {
-  const content = JSON.stringify(data, null, 2);
+  const id = await resolveGistId();
+  if (!id) return;
   try {
-    if (!getGistId()) {
-      const result = await gistRequest('POST', '/gists', {
-        description: 'Trading Bot — Signal Performance Data',
-        public: false,
-        files: { [GIST_FILE]: { content } },
-      });
-      if (result.id) persistGistId(result.id);
-    } else {
-      await gistRequest('PATCH', `/gists/${getGistId()}`, {
-        files: { [GIST_FILE]: { content } },
-      });
-    }
+    await gistRequest('PATCH', `/gists/${id}`, {
+      files: { [GIST_FILE]: { content: JSON.stringify(data, null, 2) } },
+    });
   } catch (e) {
     console.error('[Performance] Save error:', e.message);
   }
