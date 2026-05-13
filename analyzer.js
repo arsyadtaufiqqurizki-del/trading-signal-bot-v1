@@ -1,6 +1,7 @@
 const { scanAllPairs } = require('./scanner');
 const { getGlobalSentiment, getTrendingCoins } = require('./coingecko');
 const { nowWIB, fmt, getSession } = require('./utils');
+const { saveSignal } = require('./performance');
 
 function formatSignal(signal, rank) {
   const dateStr = nowWIB();
@@ -105,6 +106,7 @@ async function runAnalysis(bot, chatId, isSilent = false) {
     for (let i = 0; i < topSignals.length; i++) {
       const text = formatSignal(topSignals[i], i + 1);
       await bot.sendMessage(chatId, text, { parse_mode: "HTML" });
+      saveSignal(topSignals[i]);
     }
 
   } catch (error) {

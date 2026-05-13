@@ -28,7 +28,11 @@ module.exports = async (req, res) => {
           `🔍 /high — Scanning high-probability setup\n` +
           `📰 /news — Berita market &amp; crypto terbaru\n` +
           `📈 /trend — <b>Analisis Tren Sosmed</b>\n` +
-          `✅ /status — Cek status bot`,
+          `✅ /status — Cek status bot\n\n` +
+          `<b>📊 Performance Tracking:</b>\n` +
+          `📝 /result — Catat hasil trade\n` +
+          `📊 /stats — Lihat statistik &amp; win rate\n` +
+          `⏳ /pending — Lihat sinyal yang belum dicatat`,
           { parse_mode: 'HTML' }
         );
       } else if (text.startsWith('/fast')) {
@@ -120,6 +124,139 @@ module.exports = async (req, res) => {
         const { getNewsData } = require('../news');
         const newsMessage = await getNewsData();
         await bot.sendMessage(chatId, newsMessage, { parse_mode: 'HTML', disable_web_page_preview: true });
+      } else if (text.startsWith('/result')) {
+        const parts = text.trim().split(/\s+/);
+        if (parts.length < 4) {
+          await bot.sendMessage(chatId,
+            `❓ <b>Format salah!</b>\n\n` +
+            `Gunakan:\n<code>/result PAIR DIRECTION OUTCOME</code>\n\n` +
+            `Contoh:\n` +
+            `• <code>/result BTC LONG TP1</code>\n` +
+            `• <code>/result ETH SHORT TP2</code>\n` +
+            `• <code>/result SOL LONG SL</code>\n` +
+            `• <code>/result BNB SHORT BE</code>\n\n` +
+            `Outcome: <b>TP1</b>, <b>TP2</b>, <b>SL</b>, <b>BE</b> (breakeven)`,
+            { parse_mode: 'HTML' }
+          );
+        } else {
+          const [, pair, direction, result] = parts;
+          const validDir    = ['LONG', 'SHORT'];
+          const validResult = ['TP1', 'TP2', 'SL', 'BE'];
+
+          if (!validDir.includes(direction.toUpperCase())) {
+            await bot.sendMessage(chatId, `❌ Direction harus <b>LONG</b> atau <b>SHORT</b>.`, { parse_mode: 'HTML' });
+          } else if (!validResult.includes(result.toUpperCase())) {
+            await bot.sendMessage(chatId, `❌ Outcome harus: <b>TP1</b>, <b>TP2</b>, <b>SL</b>, atau <b>BE</b>.`, { parse_mode: 'HTML' });
+          } else {
+            const { updateResult } = require('../performance');
+            const updated = updateResult(pair, direction, result);
+
+            if (!updated) {
+              await bot.sendMessage(chatId,
+                `❌ Tidak ada sinyal OPEN untuk <b>${pair.toUpperCase()} ${direction.toUpperCase()}</b>.\n\n` +
+                `Gunakan /pending untuk lihat sinyal yang menunggu hasil.`,
+                { parse_mode: 'HTML' }
+              );
+            } else {
+              const emoji   = { TP1: '✅', TP2: '🏆', SL: '❌', BE: '➖' }[updated.result];
+              const pnlStr  = updated.pnl > 0 ? `+${updated.pnl}R` : updated.pnl === 0 ? '0R' : `${updated.pnl}R`;
+              await bot.sendMessage(chatId,
+                `${emoji} <b>Hasil Berhasil Dicatat!</b>\n\n` +
+                `Pair      : <b>${updated.pair} ${updated.direction}</b>\n` +
+                `Outcome   : <b>${updated.result}</b>\n` +
+                `PnL       : <b>${pnlStr}</b>\n` +
+                `Setup     : ${updated.setupType}\n\n` +
+                `Ketik /stats untuk melihat statistik lengkap.`,
+                { parse_mode: 'HTML' }
+              );
+            }
+          }
+        }
+
+      } else if (text.startsWith('/stats')) {
+        const parts = text.trim().split(/\s+/);
+        let days = 30;
+        if (parts[1] === 'all')              days = 0;
+        else if (parts[1] && !isNaN(parts[1])) days = parseInt(parts[1]);
+
+        const { getStats } = require('../performance');
+        const stats = getStats(days);
+
+        if (stats.empty) {
+          const pendingInfo = stats.open.length > 0
+            ? `\n\n${stats.open.length} sinyal masih OPEN — gunakan /result untuk mencatat hasilnya.`
+            : '';
+          await bot.sendMessage(chatId,
+            `📊 <b>PERFORMANCE STATS</b>\n\n` +
+            `Belum ada data trade selesai dalam ${days === 0 ? 'semua waktu' : `${days} hari terakhir`}.${pendingInfo}\n\n` +
+            `Setiap sinyal /high otomatis tersimpan. Catat hasilnya dengan:\n<code>/result PAIR DIR OUTCOME</code>`,
+            { parse_mode: 'HTML' }
+          );
+        } else {
+          const { wins, losses, breaks, winRate, totalPnl, pairMap, setupMap, sessionMap, closed, open } = stats;
+          const pnlPrefix = totalPnl > 0 ? '+' : '';
+
+          let msg = `📊 <b>PERFORMANCE REPORT — ${days === 0 ? 'All Time' : `${days} Hari Terakhir`}</b>\n`;
+          msg += `────────────────────\n`;
+          msg += `Total Trade  : ${closed.length} selesai | ${open.length} pending\n`;
+          msg += `Win (TP)     : ${wins.length}\n`;
+          msg += `Loss (SL)    : ${losses.length}\n`;
+          msg += `Breakeven    : ${breaks.length}\n`;
+          msg += `Win Rate     : <b>${winRate}%</b>\n`;
+          msg += `Total PnL    : <b>${pnlPrefix}${totalPnl}R</b>\n\n`;
+
+          msg += `<b>📈 Per Pair:</b>\n`;
+          Object.entries(pairMap)
+            .sort((a, b) => b[1].total - a[1].total)
+            .forEach(([pair, d]) => {
+              const wr    = ((d.wins / d.total) * 100).toFixed(0);
+              const emoji = wr >= 60 ? '✅' : wr >= 40 ? '⚠️' : '❌';
+              const pnl   = d.pnl >= 0 ? `+${d.pnl}R` : `${d.pnl}R`;
+              msg += `${emoji} ${pair}: ${d.wins}/${d.total} (${wr}%) ${pnl}\n`;
+            });
+
+          msg += `\n<b>🎯 Per Setup:</b>\n`;
+          Object.entries(setupMap).forEach(([setup, d]) => {
+            const wr    = ((d.wins / d.total) * 100).toFixed(0);
+            const emoji = wr >= 60 ? '✅' : wr >= 40 ? '⚠️' : '❌';
+            msg += `${emoji} ${setup}: ${wr}% (${d.total} sinyal)\n`;
+          });
+
+          msg += `\n<b>🕐 Per Session:</b>\n`;
+          Object.entries(sessionMap).forEach(([sess, d]) => {
+            const wr    = ((d.wins / d.total) * 100).toFixed(0);
+            const emoji = wr >= 60 ? '✅' : wr >= 40 ? '⚠️' : '❌';
+            msg += `${emoji} ${sess}: ${wr}% (${d.total} sinyal)\n`;
+          });
+
+          msg += `\n💡 <i>Gunakan /stats 7, /stats 30, atau /stats all</i>`;
+          await bot.sendMessage(chatId, msg, { parse_mode: 'HTML' });
+        }
+
+      } else if (text.startsWith('/pending')) {
+        const { getPending } = require('../performance');
+        const pending = getPending();
+
+        if (pending.length === 0) {
+          await bot.sendMessage(chatId,
+            `✅ <b>Tidak ada sinyal pending.</b>\n\nSemua sinyal sudah dicatat hasilnya.`,
+            { parse_mode: 'HTML' }
+          );
+        } else {
+          let msg = `⏳ <b>SINYAL PENDING (${pending.length})</b>\n────────────────────\n`;
+          pending.forEach((s, i) => {
+            const sentDate = new Date(s.sentAt).toLocaleString('id-ID', {
+              day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta'
+            });
+            msg += `${i + 1}. <b>${s.pair} ${s.direction}</b>\n`;
+            msg += `   Entry: ${s.entry} | TP1: ${s.tp1} | SL: ${s.sl}\n`;
+            msg += `   Score: ${s.confluenceScore} | ${s.setupType}\n`;
+            msg += `   Dikirim: ${sentDate}\n\n`;
+          });
+          msg += `Catat hasil: <code>/result PAIR DIR OUTCOME</code>`;
+          await bot.sendMessage(chatId, msg, { parse_mode: 'HTML' });
+        }
+
       } else if (text.startsWith('/status')) {
         await bot.sendMessage(chatId, `✅ <b>Bot Active &amp; Running</b>\nSistem siap!`, { parse_mode: 'HTML' });
       } else if (text.startsWith('/cek_versi')) {
