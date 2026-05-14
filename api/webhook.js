@@ -28,8 +28,13 @@ module.exports = async (req, res) => {
           `🔍 /high — Scanning high-probability setup\n` +
           `🔐 /crypto — <b>Dampak berita ekonomi ke market</b>\n` +
           `📰 /news — Berita market &amp; crypto terbaru\n` +
-          `📈 /trend — <b>Analisis Tren Sosmed</b>\n` +
-          `✅ /status — Cek status bot\n\n` +
+          `📈 /trend — <b>Analisis Tren Sosmed</b>\n\n` +
+          `<b>🚨 Real-time Alerts:</b>\n` +
+          `🚨 /crypto alert NFP BTC — Monitor event dampak\n` +
+          `⚙️ /crypto auto — Auto-monitor upcoming events (next 2h)\n` +
+          `📊 /crypto report — Lihat statistik alerts\n` +
+          `🔴 /crypto active — Lihat monitoring aktif\n` +
+          `⛔ /crypto stop — Hentikan semua monitoring\n\n` +
           `<b>📊 Performance Tracking:</b>\n` +
           `📝 /result — Catat hasil trade\n` +
           `📊 /stats — Lihat statistik &amp; win rate\n` +
@@ -101,10 +106,56 @@ module.exports = async (req, res) => {
           await bot.sendMessage(chatId, report, { parse_mode: 'HTML' });
         }
       } else if (text.startsWith('/crypto')) {
-        await bot.sendMessage(chatId, '⏳ Menganalisis dampak ekonomi terhadap market...');
-        const { runCryptoImpactAnalysis } = require('../crypto-analyzer');
-        const report = await runCryptoImpactAnalysis();
-        await bot.sendMessage(chatId, report, { parse_mode: 'HTML', disable_web_page_preview: true });
+        const args = text.trim().split(/\s+/);
+
+        if (args[1] === 'auto') {
+          // Auto-monitor upcoming high-impact events
+          const { autoMonitorUpcomingEvents } = require('../crypto-alerts');
+          await autoMonitorUpcomingEvents(bot, chatId, 2);
+        } else if (args[1] === 'alert') {
+          // Manual alert for specific event
+          if (!args[2]) {
+            await bot.sendMessage(chatId, `❓ <b>Usage:</b>\n<code>/crypto alert NFP BTC</code>\n\nEvents: NFP, CPI, PPI, Fed Rate, ECB, etc`, { parse_mode: 'HTML' });
+          } else {
+            const eventName = args[2];
+            const symbol = args[3] || 'BTC';
+            const { monitorEventImpact } = require('../crypto-alerts');
+            await monitorEventImpact(bot, chatId, eventName, symbol);
+          }
+        } else if (args[1] === 'report') {
+          // View alert statistics
+          const { getAlertReport } = require('../crypto-alerts');
+          const days = args[2] ? parseInt(args[2]) : 7;
+          const report = await getAlertReport(days);
+          await bot.sendMessage(chatId, report, { parse_mode: 'HTML' });
+        } else if (args[1] === 'active') {
+          // View active alerts
+          const { getActiveAlerts } = require('../crypto-alerts');
+          const active = getActiveAlerts();
+
+          if (active.length === 0) {
+            await bot.sendMessage(chatId, `✅ No active alerts running`);
+          } else {
+            let msg = `🚨 <b>ACTIVE MONITORING</b>\n\n`;
+            active.forEach((a, i) => {
+              msg += `${i+1}. ${a.eventName} / ${a.symbol}\n`;
+              msg += `   Running for: ${((Date.now() - a.startTime)/1000).toFixed(0)}s\n`;
+            });
+            await bot.sendMessage(chatId, msg, { parse_mode: 'HTML' });
+          }
+        } else if (args[1] === 'stop') {
+          // Stop monitoring
+          const { getActiveAlerts } = require('../crypto-alerts');
+          const priceMonitor = require('../price-monitor');
+          priceMonitor.stopAllMonitoring();
+          await bot.sendMessage(chatId, `⛔ All monitoring stopped`);
+        } else {
+          // Default: show crypto analysis
+          await bot.sendMessage(chatId, '⏳ Menganalisis dampak ekonomi terhadap market...');
+          const { runCryptoImpactAnalysis } = require('../crypto-analyzer');
+          const report = await runCryptoImpactAnalysis();
+          await bot.sendMessage(chatId, report, { parse_mode: 'HTML', disable_web_page_preview: true });
+        }
       } else if (text.startsWith('/create')) {
         const args = text.split(' ').slice(1).join(' ');
         if (!args) {
