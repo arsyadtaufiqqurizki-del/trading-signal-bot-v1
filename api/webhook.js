@@ -26,6 +26,7 @@ module.exports = async (req, res) => {
           `Halo! Saya adalah <b>AI Trading Assistant</b> Anda.\n\nGunakan perintah berikut:\n\n` +
           `⚡ /fast — <b>Sinyal instan sekarang</b>\n` +
           `🔍 /high — Scanning high-probability setup\n` +
+          `🔐 /crypto — <b>Dampak berita ekonomi ke market</b>\n` +
           `📰 /news — Berita market &amp; crypto terbaru\n` +
           `📈 /trend — <b>Analisis Tren Sosmed</b>\n` +
           `✅ /status — Cek status bot\n\n` +
@@ -99,6 +100,11 @@ module.exports = async (req, res) => {
           
           await bot.sendMessage(chatId, report, { parse_mode: 'HTML' });
         }
+      } else if (text.startsWith('/crypto')) {
+        await bot.sendMessage(chatId, '⏳ Menganalisis dampak ekonomi terhadap market...');
+        const { runCryptoImpactAnalysis } = require('../crypto-analyzer');
+        const report = await runCryptoImpactAnalysis();
+        await bot.sendMessage(chatId, report, { parse_mode: 'HTML', disable_web_page_preview: true });
       } else if (text.startsWith('/create')) {
         const args = text.split(' ').slice(1).join(' ');
         if (!args) {
