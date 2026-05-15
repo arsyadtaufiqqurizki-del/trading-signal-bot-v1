@@ -45,6 +45,14 @@ async function verifySignalWithAI(sig) {
     }
 }
 
+function escapeHtml(text) {
+  if (!text) return '';
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 /**
  * Format sinyal fast — VIP Pro version
  */
@@ -149,7 +157,7 @@ ${statusEmoji} <b>KONFIRMASI ENTRY 5M</b>
 <b>💎 ${sig.pair}</b> | ${dirEmoji}
 <b>Setup:</b> ${setupType}
 <b>Kondisi Market:</b> ${condEmoji}
-<b>AI Confidence:</b> <b>${aiResult.confidence}</b>
+<b>AI Confidence:</b> <b>${escapeHtml(aiResult.confidence)}</b>
 
 <b>📊 CONFLUENCE SCORE:</b>
 ${bar} ${score}/20 pts (${confLevel})
@@ -184,7 +192,7 @@ ${confirm5mBlock}
 <i>${reason}</i>
 
 <b>🤖 AI PRO TIP:</b>
-<i>${aiResult.tip}</i>
+<i>${escapeHtml(aiResult.tip)}</i>
 
 ━━━━━━━━━━━━━━━━━━━━
 📊 <b><a href="${tvLink}">Buka Chart TradingView → BINANCE:${tvSymbol}</a></b>
