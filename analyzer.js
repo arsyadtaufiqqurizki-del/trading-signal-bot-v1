@@ -95,9 +95,7 @@ async function runAnalysis(bot, chatId, isSilent = false) {
     const signals = await scanAllPairs();
 
     if (!signals || signals.length === 0) {
-      if (!isSilent) {
-        await bot.sendMessage(chatId, '📉 <b>No Trade Today</b>\nTidak ada setup valid yang memenuhi kriteria probabilitas tinggi (RR minimal 1:2 dan minimal 3 confluence).', { parse_mode: "HTML" });
-      }
+      await bot.sendMessage(chatId, '📉 <b>No Trade Today</b>\nTidak ada setup valid yang memenuhi kriteria probabilitas tinggi (RR minimal 1:2 dan minimal 3 confluence).', { parse_mode: "HTML" });
       return;
     }
 
