@@ -1,5 +1,5 @@
 'use strict';
-const { fastScan } = require('./fast-scanner');
+const { fastScan, MINIMUM_SIGNAL_SCORE } = require('./fast-scanner');
 const { nowWIB, fmt } = require('./utils');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 
@@ -191,4 +191,57 @@ async function runFastSignal(bot, chatId) {
   }
 }
 
-module.exports = { runFastSignal };
+async function runFastSignalPair(bot, chatId, keyword) {
+  const { analyzeProAsset, PRO_PAIRS } = require('./fast-scanner');
+
+  const kw = keyword.toUpperCase().replace('/USDT', '').replace(/USDT$/, '');
+
+  // Cari di PRO_PAIRS — name-based agar PEPE cocok ke 1000PEPEUSDT
+  let pairConfig = PRO_PAIRS.find(p =>
+    p.name.toUpperCase().startsWith(kw + '/') ||
+    p.symbol.toUpperCase() === kw + 'USDT' ||
+    p.symbol.toUpperCase() === kw
+  );
+
+  const isDynamic = !pairConfig;
+  if (isDynamic) {
+    pairConfig = { symbol: kw + 'USDT', name: kw + '/USDT' };
+  }
+
+  await bot.sendMessage(
+    chatId,
+    `⚡ <b>Rapid Pro Scan — ${pairConfig.name}</b>${isDynamic ? '\n⚠️ <i>Pair custom, threshold minimum score 5</i>' : ''}\nMenganalisis setup... sebentar ya!`,
+    { parse_mode: 'HTML' }
+  );
+
+  try {
+    const signal = await analyzeProAsset(pairConfig);
+
+    if (!signal) {
+      const msg = isDynamic
+        ? `⚡ <b>Rapid Pro Scan — ${pairConfig.name}</b>\n\n🚫 <b>Tidak ada hasil.</b>\nKemungkinan:\n• Pair tidak tersedia di Binance\n• Tidak ada setup valid (score < ${MINIMUM_SIGNAL_SCORE})\n• Market sedang ranging\n\n💡 Cek nama pair atau coba /fast untuk scan top 3.`
+        : `⚡ <b>Rapid Pro Scan — ${pairConfig.name}</b>\n\n🚫 <b>No Trade Today</b> — Tidak ada setup berkualitas saat ini (score < ${MINIMUM_SIGNAL_SCORE}).\n\nCoba lagi nanti ketika market memiliki momentum yang lebih jelas.`;
+      await bot.sendMessage(chatId, msg, { parse_mode: 'HTML' });
+      return;
+    }
+
+    if (signal.score < MINIMUM_SIGNAL_SCORE) {
+      await bot.sendMessage(
+        chatId,
+        `⚡ <b>Rapid Pro Scan — ${pairConfig.name}</b>\n\n⚠️ <b>Score Terlalu Rendah</b> — Setup ditemukan tapi score ${signal.score}/15 di bawah threshold minimum (${MINIMUM_SIGNAL_SCORE}).\n\nSetup kurang meyakinkan, tidak disarankan untuk entry.`,
+        { parse_mode: 'HTML' }
+      );
+      return;
+    }
+
+    const aiResult = await verifySignalWithAI(signal);
+    const text = formatFastSignal(signal, aiResult, 1, 1);
+    await bot.sendMessage(chatId, text, { parse_mode: 'HTML' });
+
+  } catch (e) {
+    console.error('[FastAnalyzer Pair] Error:', e);
+    await bot.sendMessage(chatId, `❌ Gagal menganalisis ${pairConfig.name}: ${e.message}`);
+  }
+}
+
+module.exports = { runFastSignal, runFastSignalPair };

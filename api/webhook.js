@@ -42,8 +42,15 @@ module.exports = async (req, res) => {
           { parse_mode: 'HTML' }
         );
       } else if (text.startsWith('/fast')) {
-        const { runFastSignal } = require('../fast-analyzer');
-        await runFastSignal(bot, chatId);
+        const args = text.trim().split(/\s+/);
+        const keyword = args[1];
+        if (keyword) {
+          const { runFastSignalPair } = require('../fast-analyzer');
+          await runFastSignalPair(bot, chatId, keyword);
+        } else {
+          const { runFastSignal } = require('../fast-analyzer');
+          await runFastSignal(bot, chatId);
+        }
       } else if (text.startsWith('/high')) {
         const args = text.trim().split(/\s+/);
         const keyword = args[1];

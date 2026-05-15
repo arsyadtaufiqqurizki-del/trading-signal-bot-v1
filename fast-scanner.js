@@ -213,4 +213,4 @@ async function fastScan(topN = 1) {
     return topN === 1 ? valid[0] : valid.slice(0, topN);
 }
 
-module.exports = { fastScan };
+module.exports = { fastScan, analyzeProAsset, PRO_PAIRS, MINIMUM_SIGNAL_SCORE };
