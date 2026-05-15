@@ -26,6 +26,7 @@ module.exports = async (req, res) => {
           `Halo! Saya adalah <b>AI Trading Assistant</b> Anda.\n\nGunakan perintah berikut:\n\n` +
           `⚡ /fast — <b>Sinyal instan sekarang</b>\n` +
           `🔍 /high — Scanning high-probability setup\n` +
+          `📐 /quant — <b>Quant analysis: momentum screener &amp; stat report</b>\n` +
           `🔐 /crypto — <b>Dampak berita ekonomi ke market</b>\n` +
           `📰 /news — Berita market &amp; crypto terbaru\n` +
           `📈 /trend — <b>Analisis Tren Sosmed</b>\n\n` +
@@ -41,6 +42,9 @@ module.exports = async (req, res) => {
           `⏳ /pending — Lihat sinyal yang belum dicatat`,
           { parse_mode: 'HTML' }
         );
+      } else if (text.startsWith('/quant')) {
+        const { runQuantAnalysis } = require('../quant');
+        await runQuantAnalysis(bot, chatId);
       } else if (text.startsWith('/fast')) {
         const args = text.trim().split(/\s+/);
         const keyword = args[1];
