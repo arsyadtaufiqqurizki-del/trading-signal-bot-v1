@@ -55,7 +55,7 @@ function isVolumeSpike(candles, period = 20, multiplier = 1.5) {
 // ── MARKET STRUCTURE ─────────────────────────────────────────────────────────
 function detectStructure(candles) {
   if (candles.length < 20) return { trend: 'UNKNOWN', highs: [], lows: [] };
-  const slice = candles.slice(-30);
+  const slice = candles.slice(-50);
   const highs = [], lows = [];
   for (let i = 2; i < slice.length - 2; i++) {
     if (slice[i].high > slice[i-1].high && slice[i].high > slice[i-2].high &&
@@ -81,11 +81,14 @@ function detectStructure(candles) {
 // ── BOS (BREAK OF STRUCTURE) ─────────────────────────────────────────────────
 function detectBOS(candles, structure) {
   if (!structure || !structure.highs.length || !structure.lows.length) return null;
+  if (candles.length < 2) return null;
   const last = candles[candles.length - 1];
+  const prev = candles[candles.length - 2];
   const prevSwingHigh = structure.highs[structure.highs.length - 1]?.price;
   const prevSwingLow  = structure.lows[structure.lows.length - 1]?.price;
-  if (prevSwingHigh && last.close > prevSwingHigh) return 'BULLISH_BOS';
-  if (prevSwingLow  && last.close < prevSwingLow)  return 'BEARISH_BOS';
+  // Require 2 consecutive closes above/below swing level to filter fake BOS
+  if (prevSwingHigh && last.close > prevSwingHigh && prev.close > prevSwingHigh) return 'BULLISH_BOS';
+  if (prevSwingLow  && last.close < prevSwingLow  && prev.close < prevSwingLow)  return 'BEARISH_BOS';
   return null;
 }
 

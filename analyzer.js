@@ -57,6 +57,7 @@ ${sweepLine}
 
 <b>🛑 STOP LOSS:</b> ${fmt(signal.sl, 4)}
 <b>🏁 TAKE PROFIT:</b> ${fmt(signal.tp1, 4)} / ${fmt(signal.tp2, 4)}
+<b>🔄 BREAKEVEN:</b> Geser SL → Entry jika harga sentuh <b>${fmt(signal.beLevel, 4)}</b>
 <b>❌ INVALIDASI:</b> Setup gagal jika 1H close ${signal.direction === 'LONG' ? 'di bawah' : 'di atas'} <b>${fmt(signal.invalidationLevel, 4)}</b>
 
 <b>💰 RISK SUGGESTION:</b> ${signal.riskSuggestion || '0.5% per trade'}

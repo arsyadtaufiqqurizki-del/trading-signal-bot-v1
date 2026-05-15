@@ -12,7 +12,7 @@ const TIER_CONFIG = {
   1: { minConfluence: 7, adxMin: 20, minRR: 2.2, requireExecConfirm: true  },
   2: { minConfluence: 7, adxMin: 20, minRR: 2.2, requireExecConfirm: true  },
   3: { minConfluence: 6, adxMin: 17, minRR: 2.0, requireExecConfirm: true  },
-  4: { minConfluence: 5, adxMin: 15, minRR: 1.8, requireExecConfirm: false },
+  4: { minConfluence: 5, adxMin: 15, minRR: 1.8, requireExecConfirm: true  },
 };
 
 const PAIRS = [
@@ -80,26 +80,33 @@ function getSessionInfo() {
   return { name: 'Off Session 💤', optimal: false };
 }
 
-function calcStructureSL(price, direction, structure, atr) {
-  const buffer = 0.003;
+function calcStructureSL(price, direction, ltfStructure, atr, htfStructure = null) {
+  const buffer = 0.006;
+  // Try HTF structure first (stronger anchor), then fall back to LTF
+  const structures = htfStructure ? [htfStructure, ltfStructure] : [ltfStructure];
+
   if (direction === 'LONG') {
-    const validLows = structure.lows
-      .filter(l => l.price < price)
-      .sort((a, b) => b.idx - a.idx);
-    if (validLows.length > 0) {
-      const sl = validLows[0].price * (1 - buffer);
-      if (price - sl <= atr * 3) return sl;
+    for (const structure of structures) {
+      const validLows = structure.lows
+        .filter(l => l.price < price)
+        .sort((a, b) => b.idx - a.idx);
+      if (validLows.length > 0) {
+        const sl = validLows[0].price * (1 - buffer);
+        if (price - sl <= atr * 3) return sl;
+      }
     }
-    return price - atr * 1.5;
+    return price - atr * 2.0;
   } else {
-    const validHighs = structure.highs
-      .filter(h => h.price > price)
-      .sort((a, b) => b.idx - a.idx);
-    if (validHighs.length > 0) {
-      const sl = validHighs[0].price * (1 + buffer);
-      if (sl - price <= atr * 3) return sl;
+    for (const structure of structures) {
+      const validHighs = structure.highs
+        .filter(h => h.price > price)
+        .sort((a, b) => b.idx - a.idx);
+      if (validHighs.length > 0) {
+        const sl = validHighs[0].price * (1 + buffer);
+        if (sl - price <= atr * 3) return sl;
+      }
     }
-    return price + atr * 1.5;
+    return price + atr * 2.0;
   }
 }
 
@@ -190,7 +197,8 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
   const sessionInfo = getSessionInfo();
   const atrPct      = (ltfAtr / price) * 100;
 
-  const curRsi = ltfRsi[ltfRsi.length - 1];
+  const curRsi     = ltfRsi[ltfRsi.length - 1];
+  const curHtfRsi  = htfRsi.length > 0 ? htfRsi[htfRsi.length - 1] : 50;
   const curHtfE50  = htfEma50[htfEma50.length - 1];
   const curHtfE200 = htfEma200[htfEma200.length - 1];
   const curLtfE50  = ltfEma50[ltfEma50.length - 1];
@@ -226,6 +234,10 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
   // 1. HTF trend alignment (High Weight)
   if (htfBias === 'BULLISH') { longScore += 3; longFactors.push('HTF Bullish Bias 🚀'); }
   if (htfBias === 'BEARISH') { shortScore += 3; shortFactors.push('HTF Bearish Bias 📉'); }
+
+  // 1b. HTF RSI extreme filter — penalti jika 4H RSI sudah overbought/oversold
+  if (curHtfRsi > 70) { longScore  -= 2; if (curHtfRsi > 75) longScore  -= 1; }
+  if (curHtfRsi < 30) { shortScore -= 2; if (curHtfRsi < 25) shortScore -= 1; }
 
   // 2. EMA alignment LTF (Medium Weight)
   if (price > curLtfE50 && curLtfE50 > curLtfE200) { longScore += 2; longFactors.push('LTF Bullish EMA Alignment ✅'); }
@@ -308,8 +320,18 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
   if (ltfAdx < cfg.adxMin) return null;
   if (ltfAdx < cfg.adxMin + 5) { longScore -= 1; shortScore -= 1; }
 
+  // CLIMAX phase block: trend-following setups di fase exhaustion cenderung gagal
+  const isClimax = ltfAdx > 35 && atrPct > 3;
+  if (isClimax) {
+    if (htfBias === 'BULLISH') longScore  -= 3;
+    if (htfBias === 'BEARISH') shortScore -= 3;
+  }
+
   // Session filter: soft penalty untuk off-hours (noise lebih tinggi, likuiditas rendah)
   if (!sessionInfo.optimal) { longScore -= 1; shortScore -= 1; }
+
+  // Hard block Tier 4 di luar sesi optimal — terlalu rentan SL hunting
+  if (pair.tier === 4 && !sessionInfo.optimal) return null;
 
   let signal = null;
 
@@ -318,11 +340,13 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
     if (cfg.requireExecConfirm && !isLongConfirmed) return null;
 
     const atr = ltfAtr;
-    const slRaw = calcStructureSL(price, 'LONG', ltfStruct, atr);
-    const sl  = parseFloat(slRaw.toFixed(price > 1000 ? 0 : 4));
+    const slRaw = calcStructureSL(price, 'LONG', ltfStruct, atr, htfStruct);
+    let sl = parseFloat(slRaw.toFixed(price > 1000 ? 0 : 4));
+    // Minimum SL distance: harus minimal 1.2x ATR dari entry untuk hindari wick sweep
+    if (price - sl < atr * 1.2) sl = parseFloat((price - atr * 2.0).toFixed(price > 1000 ? 0 : 4));
     const tp1 = parseFloat((price + atr * 3.0).toFixed(price > 1000 ? 0 : 4));
     const tp2 = parseFloat((price + atr * 5.0).toFixed(price > 1000 ? 0 : 4));
-    
+
     // Hybrid Entry Calculation
     const entryAggressive = price;
     let entryConservative = price;
@@ -345,9 +369,10 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
     if (rrAgg >= cfg.minRR && sl > 0) {
       const marketPhase    = classifyMarketPhase(ltfAdx, atrPct, htfBias);
       const riskSuggestion = getRiskSuggestion(longScore);
+      const beLevel = parseFloat((entryAggressive + (tp1 - entryAggressive) * 0.5).toFixed(price > 1000 ? 0 : 4));
       signal = {
         pair: pair.name, direction: 'LONG', tier: pair.tier,
-        entryAggressive, entryConservative, sl, tp1, tp2,
+        entryAggressive, entryConservative, sl, tp1, tp2, beLevel,
         rrAgg, rrCons,
         confluenceScore: longScore, factors: [...longFactors, execConfirmLabel],
         rsi: curRsi, htfBias, htfTrend: htfStruct.trend, ltfTrend: ltfStruct.trend,
@@ -364,8 +389,10 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
     if (cfg.requireExecConfirm && !isShortConfirmed) return null;
 
     const atr = ltfAtr;
-    const slRawShort = calcStructureSL(price, 'SHORT', ltfStruct, atr);
-    const slShort = parseFloat(slRawShort.toFixed(price > 1000 ? 0 : 4));
+    const slRawShort = calcStructureSL(price, 'SHORT', ltfStruct, atr, htfStruct);
+    let slShort = parseFloat(slRawShort.toFixed(price > 1000 ? 0 : 4));
+    // Minimum SL distance: harus minimal 1.2x ATR dari entry
+    if (slShort - price < atr * 1.2) slShort = parseFloat((price + atr * 2.0).toFixed(price > 1000 ? 0 : 4));
     const tp1 = parseFloat((price - atr * 3.0).toFixed(price > 1000 ? 0 : 4));
     const tp2 = parseFloat((price - atr * 5.0).toFixed(price > 1000 ? 0 : 4));
     
@@ -391,9 +418,10 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
     if (rrAgg >= cfg.minRR && tp1 > 0) {
       const marketPhase    = classifyMarketPhase(ltfAdx, atrPct, htfBias);
       const riskSuggestion = getRiskSuggestion(shortScore);
+      const beLevel = parseFloat((entryAggressive - (entryAggressive - tp1) * 0.5).toFixed(price > 1000 ? 0 : 4));
       signal = {
         pair: pair.name, direction: 'SHORT', tier: pair.tier,
-        entryAggressive, entryConservative, sl: slShort, tp1, tp2,
+        entryAggressive, entryConservative, sl: slShort, tp1, tp2, beLevel,
         rrAgg, rrCons,
         confluenceScore: shortScore, factors: [...shortFactors, execConfirmLabel],
         rsi: curRsi, htfBias, htfTrend: htfStruct.trend, ltfTrend: ltfStruct.trend,
