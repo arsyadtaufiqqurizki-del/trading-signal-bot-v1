@@ -1,82 +1,128 @@
+'use strict';
 const { scanAllPairs } = require('./scanner');
 const { getGlobalSentiment, getTrendingCoins } = require('./coingecko');
 const { nowWIB, fmt, getSession } = require('./utils');
 const { saveSignal } = require('./performance');
 
-function formatSignal(signal, rank) {
+function formatSignal(signal, rank, total) {
   const dateStr = nowWIB();
 
-  // Progress bar — cap visual at 20 points as "perfect signal" baseline
-  const score = signal.confluenceScore || 0;
+  // Confluence progress bar (cap at 20 pts)
+  const score  = signal.confluenceScore || 0;
   const filled = Math.min(10, Math.round((score / 20) * 10));
-  const progressBar = '█'.repeat(filled) + '░'.repeat(10 - filled);
-
-  const ms  = `HTF: ${signal.htfTrend}, LTF: ${signal.ltfTrend}`;
-  const kl  = signal.nearLevel
-    ? `${signal.nearLevel.type} @ ${fmt(signal.nearLevel.price)}`
-    : 'Menunggu konfirmasi liquidity grab di level terdekat';
-  const conf = signal.factors.join(', ');
+  const bar    = '█'.repeat(filled) + '░'.repeat(10 - filled);
 
   let confLevel = 'Low';
-  if (score >= 10) confLevel = 'Very High';
+  if (score >= 10) confLevel = 'Very High ⭐';
   else if (score >= 7) confLevel = 'High';
   else if (score >= 5) confLevel = 'Medium';
 
+  // Setup type
   let setupType = 'Trend Continuation';
-  if (signal.liquiditySweep) setupType = 'Liquidity Sweep Reversal 🎯';
+  if (signal.liquiditySweep)  setupType = 'Liquidity Sweep Reversal 🎯';
   else if (signal.divergence) setupType = 'Divergence Reversal';
   else if (signal.bos)        setupType = 'BOS Breakout';
 
-  const sessionWarn = signal.sessionInfo && !signal.sessionInfo.optimal
-    ? `\n⚠️ <i>Di luar sesi optimal — eksekusi dengan hati-hati!</i>` : '';
-
-  const sweepLine = signal.liquiditySweep
-    ? `\n🎯 <b>LIQUIDITY SWEEP TERDETEKSI!</b> Smart money telah sweep ${signal.liquiditySweep === 'BULLISH_SWEEP' ? 'swing low' : 'swing high'} → high-probability reversal.`
-    : '';
-
-  const tvLink = `https://www.tradingview.com/chart/?symbol=BINANCE:${signal.pair.replace('/', '')}`;
-
-  const tierLabel = signal.tier === 4 ? '⚠️ Tier 4 — Volatil, size kecil'
+  // Tier label
+  const tierLabel = signal.tier === 4 ? '⚠️ Tier 4 — Volatil'
     : signal.tier === 3 ? '🔶 Tier 3 — Altcoin Established'
     : signal.tier === 2 ? '🔷 Tier 2 — Large Cap'
     : '💎 Tier 1 — Mega Cap';
 
-  return `🏆 <b>RANK #${rank} | ${signal.pair}</b>
-────────────────────
-<b>Tipe:</b> ${signal.direction === 'LONG' ? '🟢 LONG' : '🔴 SHORT'}
+  // Session warning
+  const sessionWarn = signal.sessionInfo && !signal.sessionInfo.optimal
+    ? `\n⚠️ <i>Di luar sesi optimal — eksekusi dengan hati-hati!</i>` : '';
+
+  // Liquidity sweep notice
+  const sweepLine = signal.liquiditySweep
+    ? `\n\n🎯 <b>LIQUIDITY SWEEP DETECTED!</b> Smart money telah sweep ${signal.liquiditySweep === 'BULLISH_SWEEP' ? 'swing low' : 'swing high'} — high-probability reversal.`
+    : '';
+
+  // Price formatter
+  const dec = signal.entryAggressive >= 1000 ? 1 : signal.entryAggressive >= 1 ? 4 : 6;
+  const p = (n) => {
+    if (n == null || isNaN(n)) return 'N/A';
+    return '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec });
+  };
+
+  // Leverage berdasarkan tier dan market phase
+  const isClimax  = signal.marketPhase && signal.marketPhase.includes('CLIMAX');
+  const leverage  = isClimax ? '2x–3x ⚡ (Hati-hati)'
+    : signal.tier === 1 ? '5x–10x'
+    : signal.tier === 2 ? '5x–8x'
+    : '3x–5x';
+
+  // Entry reason narrative
+  const rsiPos = signal.direction === 'LONG'
+    ? (signal.rsi < 45 ? 'masih memiliki ruang naik' : signal.rsi < 60 ? 'dalam zona neutral-bullish' : 'menunjukkan momentum kuat')
+    : (signal.rsi > 55 ? 'masih memiliki ruang turun' : signal.rsi > 40 ? 'dalam zona neutral-bearish' : 'menunjukkan tekanan bearish kuat');
+
+  const reason = signal.direction === 'LONG'
+    ? `HTF bias <b>${signal.htfBias}</b> dikonfirmasi ${signal.factors.length} faktor confluence. RSI 1H di ${fmt(signal.rsi, 1)} ${rsiPos}. ADX ${fmt(signal.adx, 1)} mengonfirmasi kekuatan tren. Entry di zona high-probability dengan SL terstruktur di bawah support.`
+    : `HTF bias <b>${signal.htfBias}</b> dengan tekanan bearish dari ${signal.factors.length} faktor confluence. RSI 1H di ${fmt(signal.rsi, 1)} ${rsiPos}. ADX ${fmt(signal.adx, 1)} mengonfirmasi dominasi seller. SL ditempatkan di atas resistance struktur.`;
+
+  // Confluence factors list
+  const confluenceList = signal.factors.map(f => `  ✅ ${f}`).join('\n');
+
+  // TradingView link
+  const tvSymbol = signal.pair.replace('/', '');
+  const tvLink   = `https://www.tradingview.com/chart/?symbol=BINANCE:${tvSymbol}`;
+
+  const rankHeader = total > 1 ? `#${rank}/${total}` : `#${rank}`;
+  const dirEmoji   = signal.direction === 'LONG' ? '🟢 LONG' : '🔴 SHORT';
+
+  return `💎 <b>HIGH PROBABILITY SIGNAL ${rankHeader}</b>
+━━━━━━━━━━━━━━━━━━━━
+📅 ${dateStr}
+
+<b>${signal.direction === 'LONG' ? '🟢' : '🔴'} ${signal.pair}</b> | ${dirEmoji}
 <b>Kategori:</b> ${tierLabel}
 <b>Setup:</b> ${setupType}
 <b>Session:</b> ${signal.sessionInfo ? signal.sessionInfo.name : '-'}${sessionWarn}
-<b>Market Phase:</b> ${signal.marketPhase || '-'}
-<b>ADX:</b> ${signal.adx ? fmt(signal.adx, 1) : '-'} (Trend Strength)
-<b>Confidence:</b> ${progressBar} ${score} pts (${confLevel})
-${sweepLine}
-🎯 <b>ENTRY STRATEGY:</b>
-• <b>Aggressive:</b> ${fmt(signal.entryAggressive, 4)} (Market) → RR 1:${fmt(signal.rrAgg, 2)}
-• <b>Conservative:</b> ${fmt(signal.entryConservative, 4)} (Limit) → RR 1:${fmt(signal.rrCons, 2)}
+<b>Market Phase:</b> ${signal.marketPhase || '-'}${sweepLine}
 
-<b>🛑 STOP LOSS:</b> ${fmt(signal.sl, 4)}
-<b>🏁 TAKE PROFIT:</b> ${fmt(signal.tp1, 4)} / ${fmt(signal.tp2, 4)}
-<b>🔄 BREAKEVEN:</b> Geser SL → Entry jika harga sentuh <b>${fmt(signal.beLevel, 4)}</b>
-<b>❌ INVALIDASI:</b> Setup gagal jika 1H close ${signal.direction === 'LONG' ? 'di bawah' : 'di atas'} <b>${fmt(signal.invalidationLevel, 4)}</b>
+<b>📊 CONFLUENCE SCORE:</b>
+${bar} ${score} pts (${confLevel})
 
-<b>💰 RISK SUGGESTION:</b> ${signal.riskSuggestion || '0.5% per trade'}
+━━━━━━━━━━━━━━━━━━━━
+🎯 <b>ENTRY STRATEGY</b>
+• <b>Agresif (Market):</b> ${p(signal.entryAggressive)} → RR 1:${fmt(signal.rrAgg, 2)}
+• <b>Konservatif (Limit):</b> ${p(signal.entryConservative)} → RR 1:${fmt(signal.rrCons, 2)}
 
-<b>📝 ANALISIS:</b>
-• Market Structure: ${ms}
-• Key Level: ${kl}
-• Konfirmasi: ${conf}
+<b>🛑 Stop Loss:</b> ${p(signal.sl)}
+<b>🏁 TP 1 – Partial (50%):</b> ${p(signal.tp1)}
+<b>🏁 TP 2 – Full Target:</b> ${p(signal.tp2)}
+<b>🔄 Breakeven:</b> Geser SL → Entry jika harga sentuh <b>${p(signal.beLevel)}</b>
+<b>❌ Invalidasi:</b> Setup gagal jika 1H close ${signal.direction === 'LONG' ? 'di bawah' : 'di atas'} <b>${p(signal.invalidationLevel)}</b>
 
-📈 <b><a href="${tvLink}">Buka Chart TradingView</a></b>
+<b>💰 Risk:</b> ${signal.riskSuggestion || '0.5% per trade'}
+<b>🔧 Leverage:</b> ${leverage}
 
-⚠️ <i>Disclaimer: Sinyal probabilitas. Gunakan manajemen risiko.</i>`;
+━━━━━━━━━━━━━━━━━━━━
+<b>🔗 CONFLUENCE FACTORS (${signal.factors.length} aktif)</b>
+${confluenceList}
+
+━━━━━━━━━━━━━━━━━━━━
+<b>📈 ANALISIS TEKNIKAL</b>
+• <b>Struktur:</b> HTF ${signal.htfTrend} | LTF ${signal.ltfTrend}
+• <b>HTF Bias:</b> ${signal.htfBias}
+• <b>RSI 1H:</b> ${fmt(signal.rsi, 1)}
+• <b>ADX:</b> ${fmt(signal.adx, 1)} (Trend Strength)
+
+<b>📝 ALASAN ENTRY:</b>
+<i>${reason}</i>
+
+━━━━━━━━━━━━━━━━━━━━
+📊 <b><a href="${tvLink}">Buka Chart TradingView → BINANCE:${tvSymbol}</a></b>
+
+⚠️ <i>Sinyal probabilitas tinggi. Selalu gunakan manajemen risiko yang ketat.</i>`;
 }
 
 async function runAnalysis(bot, chatId, isSilent = false) {
   try {
     if (!isSilent) {
-      await bot.sendMessage(chatId, `🔍 <b>Memulai Analisis Market (Binance & CoinGecko)...</b>\nSesi: ${getSession().name}`, { parse_mode: "HTML" });
-      
+      await bot.sendMessage(chatId, `🔍 <b>Memulai Analisis Market (Binance & CoinGecko)...</b>\nSesi: ${getSession().name}`, { parse_mode: 'HTML' });
+
       const sentiment = await getGlobalSentiment();
       let cgMsg = '';
       if (sentiment) {
@@ -86,31 +132,29 @@ async function runAnalysis(bot, chatId, isSilent = false) {
       if (trending.length) {
         cgMsg += `🔥 Trending CoinGecko: ${trending.join(', ')}`;
       }
-      
       if (cgMsg) {
-        await bot.sendMessage(chatId, cgMsg, { parse_mode: "HTML" });
+        await bot.sendMessage(chatId, cgMsg, { parse_mode: 'HTML' });
       }
     }
 
     const signals = await scanAllPairs();
 
     if (!signals || signals.length === 0) {
-      await bot.sendMessage(chatId, '📉 <b>No Trade Today</b>\nTidak ada setup valid yang memenuhi kriteria probabilitas tinggi (RR minimal 1:2 dan minimal 3 confluence).', { parse_mode: "HTML" });
+      await bot.sendMessage(chatId, '📉 <b>No Trade Today</b>\nTidak ada setup valid yang memenuhi kriteria probabilitas tinggi (RR minimal 1:2 dan minimal 3 confluence).', { parse_mode: 'HTML' });
       return;
     }
 
-    // Sort by confluenceScore descending and take top 3
     const topSignals = signals
       .sort((a, b) => (b.confluenceScore || 0) - (a.confluenceScore || 0))
       .slice(0, 3);
 
     if (!isSilent) {
-      await bot.sendMessage(chatId, `💎 <b>TOP ${topSignals.length} HIGH PROBABILITY SETUPS</b>\nBerikut adalah setup terbaik berdasarkan skor konfluensi tertinggi:`, { parse_mode: "HTML" });
+      await bot.sendMessage(chatId, `💎 <b>TOP ${topSignals.length} HIGH PROBABILITY SETUPS</b>\nBerikut adalah setup terbaik berdasarkan skor konfluensi tertinggi:`, { parse_mode: 'HTML' });
     }
 
     for (let i = 0; i < topSignals.length; i++) {
-      const text = formatSignal(topSignals[i], i + 1);
-      await bot.sendMessage(chatId, text, { parse_mode: "HTML" });
+      const text = formatSignal(topSignals[i], i + 1, topSignals.length);
+      await bot.sendMessage(chatId, text, { parse_mode: 'HTML' });
       await saveSignal(topSignals[i]);
     }
 
