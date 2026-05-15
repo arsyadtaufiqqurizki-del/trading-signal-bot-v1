@@ -45,8 +45,15 @@ module.exports = async (req, res) => {
         const { runFastSignal } = require('../fast-analyzer');
         await runFastSignal(bot, chatId);
       } else if (text.startsWith('/high')) {
-        const { runAnalysis } = require('../analyzer');
-        await runAnalysis(bot, chatId, false);
+        const args = text.trim().split(/\s+/);
+        const keyword = args[1];
+        if (keyword) {
+          const { runAnalysisPair } = require('../analyzer');
+          await runAnalysisPair(bot, chatId, keyword);
+        } else {
+          const { runAnalysis } = require('../analyzer');
+          await runAnalysis(bot, chatId, false);
+        }
       } else if (text.startsWith('/trend')) {
         await bot.sendMessage(chatId, '⏳ Sedang menganalisis tren...');
         const socialScanner = require('../social_scanner');

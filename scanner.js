@@ -479,8 +479,7 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
   return signal;
 }
 
-async function scanAllPairs() {
-  // 1. Fetch BTC Trend — dual TF (1H intraday + 4H macro)
+async function fetchBtcTrends() {
   let btcTrend1h = 'NEUTRAL';
   let btcTrend4h = 'NEUTRAL';
   try {
@@ -488,7 +487,6 @@ async function scanAllPairs() {
       getKlines('BTCUSDT', '1h', 100),
       getKlines('BTCUSDT', '4h', 100),
     ]);
-
     if (btcKlines1h.length) {
       const cl = btcKlines1h.map(c => c.close);
       const st = detectStructure(btcKlines1h);
@@ -496,7 +494,6 @@ async function scanAllPairs() {
       if (e50[e50.length-1] > e200[e200.length-1] && st.trend !== 'DOWNTREND') btcTrend1h = 'BULLISH';
       else if (e50[e50.length-1] < e200[e200.length-1] && st.trend !== 'UPTREND') btcTrend1h = 'BEARISH';
     }
-
     if (btcKlines4h.length) {
       const cl = btcKlines4h.map(c => c.close);
       const st = detectStructure(btcKlines4h);
@@ -507,14 +504,17 @@ async function scanAllPairs() {
   } catch (e) {
     console.error('Error fetching BTC trend:', e);
   }
+  return { btcTrend1h, btcTrend4h };
+}
 
+async function scanAllPairs() {
+  const { btcTrend1h, btcTrend4h } = await fetchBtcTrends();
   const results = await Promise.allSettled(PAIRS.map(p => analyzeAsset(p, btcTrend1h, btcTrend4h)));
-  const signals = results
+  return results
     .filter(r => r.status === 'fulfilled' && r.value !== null)
     .map(r => r.value)
     .sort((a, b) => b.confluenceScore - a.confluenceScore)
     .slice(0, 3);
-  return signals;
 }
 
-module.exports = { scanAllPairs };
+module.exports = { scanAllPairs, analyzeAsset, fetchBtcTrends, PAIRS };

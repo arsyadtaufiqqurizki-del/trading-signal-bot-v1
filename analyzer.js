@@ -166,4 +166,63 @@ async function runAnalysis(bot, chatId, isSilent = false) {
   }
 }
 
-module.exports = { formatSignal, runAnalysis };
+async function runAnalysisPair(bot, chatId, keyword) {
+  const { analyzeAsset, fetchBtcTrends, PAIRS } = require('./scanner');
+
+  // Normalize: uppercase, strip /USDT or trailing USDT
+  const kw = keyword.toUpperCase().replace('/USDT', '').replace(/USDT$/, '');
+
+  // Search predefined list — name-first agar PEPE/USDT cocok saat user ketik "PEPE"
+  let pairConfig = PAIRS.find(p =>
+    p.name.toUpperCase().startsWith(kw + '/') ||
+    p.symbol.toUpperCase() === kw + 'USDT' ||
+    p.symbol.toUpperCase() === kw
+  );
+
+  let isDynamic = false;
+  if (!pairConfig) {
+    isDynamic = true;
+    pairConfig = { symbol: kw + 'USDT', name: kw + '/USDT', htf: '4h', ltf: '1h', exec: '15m', tier: 4 };
+  }
+
+  await bot.sendMessage(
+    chatId,
+    `🔍 <b>Menganalisis ${pairConfig.name}...</b>${isDynamic ? '\n⚠️ <i>Pair custom — threshold Tier 4</i>' : ''}`,
+    { parse_mode: 'HTML' }
+  );
+
+  try {
+    const { btcTrend1h, btcTrend4h } = await fetchBtcTrends();
+    const signal = await analyzeAsset(pairConfig, btcTrend1h, btcTrend4h);
+
+    if (!signal) {
+      await bot.sendMessage(
+        chatId,
+        `📉 <b>No Setup — ${pairConfig.name}</b>\n\nTidak ada setup valid saat ini. Kemungkinan:\n• Market sedang ranging / ADX terlalu rendah\n• Confluence tidak cukup terpenuhi\n• Di luar sesi optimal (Tier 4)\n\nCoba lagi nanti atau gunakan /high untuk scan semua pair.`,
+        { parse_mode: 'HTML' }
+      );
+      return;
+    }
+
+    const text = formatSignal(signal, 1, 1);
+    await bot.sendMessage(chatId, text, { parse_mode: 'HTML' });
+    await saveSignal(signal);
+
+  } catch (e) {
+    const isInvalid = e?.response?.data?.msg?.includes('Invalid symbol') ||
+      e?.response?.status === 400 ||
+      e?.message?.includes('Invalid symbol');
+
+    if (isInvalid) {
+      await bot.sendMessage(
+        chatId,
+        `❌ <b>Pair tidak ditemukan: ${pairConfig.name}</b>\n\nPair ini tidak tersedia di Binance. Pastikan nama benar.\n\n💡 Contoh valid:\n<code>/high BTC</code> — Bitcoin\n<code>/high ETH</code> — Ethereum\n<code>/high PEPE</code> — PepeCoin\n\nGunakan /high (tanpa argumen) untuk scan top 3 setup terbaik.`,
+        { parse_mode: 'HTML' }
+      );
+    } else {
+      await bot.sendMessage(chatId, `❌ Gagal menganalisis ${pairConfig.name}: ${e.message}`);
+    }
+  }
+}
+
+module.exports = { formatSignal, runAnalysis, runAnalysisPair };
