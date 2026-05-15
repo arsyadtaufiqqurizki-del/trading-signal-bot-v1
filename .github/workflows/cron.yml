@@ -1,14 +1,16 @@
-name: Hourly Auto-Scan Pinger
+name: Hourly Auto-Scan /high
 
 on:
   schedule:
-    - cron: '0 * * * *' # Runs at minute 0 past every hour
-  workflow_dispatch: # Allows manual triggering from GitHub UI
+    - cron: '0 * * * *' # Setiap jam, menit ke-0
+  workflow_dispatch: # Bisa dipicu manual dari GitHub UI
 
 jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
-      - name: Ping Vercel Cron Endpoint
+      - name: Ping Cloud Run Cron Endpoint
         run: |
-          curl -X GET https://trading-signal-bot-v1.vercel.app/api/cron
+          curl -s -o /dev/null -w "%{http_code}" \
+            -X GET "${{ secrets.CLOUD_RUN_URL }}/api/cron" \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}"
