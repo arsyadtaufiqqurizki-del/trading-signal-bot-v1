@@ -248,6 +248,18 @@ function calcStochRSI(closes, rsiPeriod = 14, stochPeriod = 14) {
   };
 }
 
+// ── VWAP ─────────────────────────────────────────────────────────────────────
+function calcVWAP(candles) {
+  if (!candles || candles.length === 0) return null;
+  let cumPV = 0, cumVol = 0;
+  for (const c of candles) {
+    const tp = (c.high + c.low + c.close) / 3;
+    cumPV += tp * c.volume;
+    cumVol += c.volume;
+  }
+  return cumVol > 0 ? cumPV / cumVol : null;
+}
+
 // ── CANDLE PATTERN ───────────────────────────────────────────────────────────
 function detectCandlePattern(candles) {
   if (candles.length < 2) return null;
@@ -304,7 +316,7 @@ function calcADX(candles, period = 14) {
 }
 
 module.exports = {
-  calcEMA, calcRSI, calcATR, calcADX, calcMACD, calcStochRSI,
+  calcEMA, calcRSI, calcATR, calcADX, calcMACD, calcStochRSI, calcVWAP,
   isVolumeSpike, detectStructure, detectBOS, findKeyLevels,
   detectDivergence, detectFVG, detectOrderBlocks, detectCandlePattern,
   detectLiquiditySweep

@@ -1,6 +1,6 @@
 'use strict';
 const { fastScan, MINIMUM_SIGNAL_SCORE } = require('./fast-scanner');
-const { nowWIB, fmt } = require('./utils');
+const { nowWIB, fmt, getSession } = require('./utils');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 // Initialize Gemini AI
@@ -72,11 +72,11 @@ function formatFastSignal(sig, aiResult, rank = 1, total = 1) {
   // Breakeven — geser SL ke entry saat harga sentuh level ini
   const beLevel = sig.direction === 'LONG' ? sig.price + atr * 1.0 : sig.price - atr * 1.0;
 
-  // Confidence score
+  // Confidence score (max 20 pts with all new factors)
   const score  = sig.score || 0;
-  const filled = Math.min(10, Math.round((score / 15) * 10));
+  const filled = Math.min(10, Math.round((score / 20) * 10));
   const bar    = '█'.repeat(filled) + '░'.repeat(10 - filled);
-  const confLevel = score >= 12 ? 'Very High' : score >= 9 ? 'High' : score >= 6 ? 'Medium' : 'Low';
+  const confLevel = score >= 16 ? 'Very High' : score >= 12 ? 'High' : score >= 8 ? 'Medium' : 'Low';
 
   // Setup type dari factors
   const factorsStr = sig.factors.join(' ');
@@ -117,6 +117,31 @@ function formatFastSignal(sig, aiResult, rank = 1, total = 1) {
   // Confluence list
   const confluenceList = sig.factors.map(f => `  ✅ ${f}`).join('\n');
 
+  // 5m Entry Confirmation block
+  const c5 = sig.confirm5m;
+  let confirm5mBlock = '';
+  if (c5 && c5.rsi !== null) {
+    const statusEmoji  = c5.aligned ? '✅' : '⚠️';
+    const statusText   = c5.aligned ? 'KONFIRMASI — Aman Entry Sekarang' : 'BELUM KONFIRMASI — Tunggu Sinyal 5M';
+    const trendArrow   = c5.trend === 'UP' ? '⬆️ UP' : '⬇️ DOWN';
+    const rsiDir       = c5.rsiRising ? '↗ Rising' : '↘ Falling';
+    const patternLine  = c5.pattern ? `\n• <b>Pola 5m:</b> ${c5.pattern}` : '';
+    const volLine      = c5.volSpike ? '\n• <b>Volume 5m:</b> Spike ✅' : '';
+
+    confirm5mBlock = `
+━━━━━━━━━━━━━━━━━━━━
+${statusEmoji} <b>KONFIRMASI ENTRY 5M</b>
+• <b>Status:</b> <b>${statusText}</b>
+• <b>Trend 5m:</b> ${trendArrow}
+• <b>RSI 5m:</b> ${fmt(c5.rsi, 1)} (${rsiDir})${patternLine}${volLine}
+• <b>EMA 9 vs 20:</b> ${c5.ema9 > c5.ema20 ? 'EMA9 > EMA20 🟢' : 'EMA9 < EMA20 🔴'}
+
+💡 <i>${c5.aligned
+  ? `5M sudah aligned — entry ${sig.direction === 'LONG' ? 'agresif oke, atau tunggu retest EMA 9' : 'agresif oke, atau tunggu rejection EMA 9'}.`
+  : `Tunggu candle 5M konfirmasi (${sig.direction === 'LONG' ? 'close di atas EMA 9 & RSI rising' : 'close di bawah EMA 9 & RSI falling'}) sebelum masuk.`
+}</i>`;
+  }
+
   return `⚡ <b>RAPID PRO SIGNAL ${rankHeader}</b>
 ━━━━━━━━━━━━━━━━━━━━
 📅 ${dateStr}
@@ -127,7 +152,7 @@ function formatFastSignal(sig, aiResult, rank = 1, total = 1) {
 <b>AI Confidence:</b> <b>${aiResult.confidence}</b>
 
 <b>📊 CONFLUENCE SCORE:</b>
-${bar} ${score}/15 pts (${confLevel})
+${bar} ${score}/20 pts (${confLevel})
 
 ━━━━━━━━━━━━━━━━━━━━
 🎯 <b>ENTRY STRATEGY</b>
@@ -146,11 +171,13 @@ ${bar} ${score}/15 pts (${confLevel})
 ━━━━━━━━━━━━━━━━━━━━
 <b>🔗 CONFLUENCE FACTORS (${sig.factors.length} aktif)</b>
 ${confluenceList}
-
+${confirm5mBlock}
 ━━━━━━━━━━━━━━━━━━━━
 <b>📈 ANALISIS TEKNIKAL</b>
-• <b>Struktur:</b> 1H ${sig.trend1h} | 15m ${sig.trend15m}
+• <b>Struktur:</b> 4H ${sig.trend4h} | 1H ${sig.trend1h} | 15m ${sig.trend15m}
 • <b>RSI 15m:</b> ${fmt(sig.rsi, 1)}
+• <b>VWAP 15m:</b> ${sig.vwap ? p(sig.vwap) : 'N/A'} ${sig.vwap ? (sig.price > sig.vwap ? '(harga di atas ✅)' : '(harga di bawah ✅)') : ''}
+• <b>Funding Rate:</b> ${sig.fundingRate !== null ? fmt(sig.fundingRate, 4) + '%' : 'N/A'} ${sig.fundingRate !== null ? (Math.abs(sig.fundingRate) < 0.05 ? '⚖️ Netral' : sig.fundingRate > 0 ? '📈 Long-heavy' : '📉 Short-heavy') : ''}
 • <b>24h Change:</b> ${sig.change24h > 0 ? '+' : ''}${fmt(sig.change24h, 2)}%
 
 <b>📝 ALASAN ENTRY:</b>
@@ -183,8 +210,14 @@ async function runFastSignal(bot, chatId) {
 
   } catch (error) {
     console.error('[FastAnalyzer] Error:', error);
-    if (error.message === 'NO_QUALITY_SETUP') {
-      await bot.sendMessage(chatId, '⚡ <b>Rapid Pro Scan</b>\n\n🚫 <b>No Trade Today</b> — Tidak ada setup berkualitas tinggi saat ini (score < 5). Semua pair tidak memenuhi kriteria confluence minimum.\n\nCoba lagi nanti ketika market memiliki tren yang lebih jelas.', { parse_mode: 'HTML' });
+    if (error.message && error.message.startsWith('INTER_SESSION')) {
+      const sessionName = error.message.split(':')[1] || 'Inter-Session';
+      await bot.sendMessage(chatId,
+        `⚡ <b>Rapid Pro Scan</b>\n\n⏸️ <b>${sessionName} — Low Liquidity</b>\nSinyal tidak dihasilkan di luar jam trading likuid untuk menghindari false breakout.\n\n🕐 <b>Jam Optimal (WIB):</b>\n• 🇬🇧 London Session: 14:00 – 20:00\n• 🇺🇸 New York Session: 20:00 – 02:00\n\nCoba lagi saat salah satu sesi aktif.`,
+        { parse_mode: 'HTML' }
+      );
+    } else if (error.message === 'NO_QUALITY_SETUP') {
+      await bot.sendMessage(chatId, `⚡ <b>Rapid Pro Scan</b>\n\n🚫 <b>No Trade Today</b> — Tidak ada setup berkualitas tinggi saat ini (score < ${MINIMUM_SIGNAL_SCORE}). Semua pair tidak memenuhi kriteria confluence minimum.\n\nCoba lagi nanti ketika market memiliki tren yang lebih jelas.`, { parse_mode: 'HTML' });
     } else {
       await bot.sendMessage(chatId, `❌ Gagal mengambil sinyal Pro: ${error.message}\nCoba lagi dalam beberapa detik.`);
     }
@@ -208,9 +241,14 @@ async function runFastSignalPair(bot, chatId, keyword) {
     pairConfig = { symbol: kw + 'USDT', name: kw + '/USDT' };
   }
 
+  const session = getSession();
+  const sessionWarning = !session.active
+    ? `\n⏸️ <i>Peringatan: ${session.name} — sinyal mungkin kurang reliable di luar jam likuid.</i>`
+    : `\n🕐 <i>Sesi aktif: ${session.name}</i>`;
+
   await bot.sendMessage(
     chatId,
-    `⚡ <b>Rapid Pro Scan — ${pairConfig.name}</b>${isDynamic ? '\n⚠️ <i>Pair custom, threshold minimum score 5</i>' : ''}\nMenganalisis setup... sebentar ya!`,
+    `⚡ <b>Rapid Pro Scan — ${pairConfig.name}</b>${isDynamic ? '\n⚠️ <i>Pair custom, threshold minimum score ' + MINIMUM_SIGNAL_SCORE + '</i>' : ''}${sessionWarning}\nMenganalisis setup... sebentar ya!`,
     { parse_mode: 'HTML' }
   );
 

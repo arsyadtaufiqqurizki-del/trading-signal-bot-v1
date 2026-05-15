@@ -1,9 +1,9 @@
 'use strict';
-const { getKlines, getTicker } = require('./binance');
-const { calcEMA, calcRSI, calcATR, calcADX, isVolumeSpike, detectStructure } = require('./indicators');
-const { fmt } = require('./utils');
+const { getKlines, getTicker, getFundingRate } = require('./binance');
+const { calcEMA, calcRSI, calcATR, calcADX, calcVWAP, isVolumeSpike, detectStructure, detectDivergence } = require('./indicators');
+const { fmt, getSession } = require('./utils');
 
-const MINIMUM_SIGNAL_SCORE = 5;
+const MINIMUM_SIGNAL_SCORE = 7;
 
 // Stable Pro List: Koin paling likuid untuk menjamin stabilitas di Vercel/Hosting
 const PRO_PAIRS = [
@@ -80,10 +80,13 @@ function detectCandlePattern(candles) {
 async function analyzeProAsset(pair) {
     try {
         const symbol = pair.symbol;
-        const [candles1h, candles15m, ticker] = await Promise.all([
+        const [candles1h, candles15m, candles5m, candles4h, ticker, fundingRate] = await Promise.all([
             getKlines(symbol, '1h', 250),
             getKlines(symbol, '15m', 100),
+            getKlines(symbol, '5m', 60),
+            getKlines(symbol, '4h', 100),
             getTicker(symbol),
+            getFundingRate(symbol),
         ]);
 
         if (!candles1h || candles1h.length < 50 || !candles15m || candles15m.length < 30) return null;
@@ -109,6 +112,54 @@ async function analyzeProAsset(pair) {
         const candlePattern15m = detectCandlePattern(candles15m);
         const adx1h            = calcADX(candles1h, 14);
         const volSpike15m      = isVolumeSpike(candles15m, 20, 1.5);
+
+        // ── FILTER 1: Block ranging market (ADX < 20) ──────────────────────
+        if (adx1h < 20) return null;
+
+        // ── VWAP (15M) ──────────────────────────────────────────────────────
+        const vwap15m = calcVWAP(candles15m);
+
+        // ── 4H Bias ─────────────────────────────────────────────────────────
+        let trend4h = 'RANGING';
+        if (candles4h && candles4h.length >= 50) {
+            const closes4h = candles4h.map(c => c.close);
+            const ema20_4h = calcEMA(closes4h, 20).pop();
+            const ema50_4h = calcEMA(closes4h, 50).pop();
+            const close4h  = closes4h[closes4h.length - 1];
+            if (ema20_4h > ema50_4h && close4h > ema20_4h) trend4h = 'UPTREND';
+            else if (ema20_4h < ema50_4h && close4h < ema20_4h) trend4h = 'DOWNTREND';
+        }
+
+        // ── RSI Divergence 15M ───────────────────────────────────────────────
+        const divergence15m = detectDivergence(candles15m, rsiArr15m);
+
+        // 5m entry confirmation data
+        let confirm5m = { trend: 'NEUTRAL', rsi: null, pattern: null, volSpike: false, aligned: false };
+        if (candles5m && candles5m.length >= 20) {
+            const closes5m   = candles5m.map(c => c.close);
+            const close5m    = closes5m[closes5m.length - 1];
+            const ema20_5m   = calcEMA(closes5m, 20).pop();
+            const ema9_5m    = calcEMA(closes5m, 9).pop();
+            const rsiArr5m   = calcRSI(closes5m, 14);
+            const rsi5m      = rsiArr5m[rsiArr5m.length - 1];
+            const rsiPrev5m  = rsiArr5m[rsiArr5m.length - 2];
+            const pattern5m  = detectCandlePattern(candles5m);
+            const volSpike5m = isVolumeSpike(candles5m, 20, 1.5);
+            const trend5m    = close5m > ema20_5m ? 'UP' : 'DOWN';
+
+            confirm5m = {
+                trend: trend5m,
+                rsi: rsi5m,
+                rsiRising: rsi5m > rsiPrev5m,
+                pattern: pattern5m,
+                volSpike: volSpike5m,
+                ema9: ema9_5m,
+                ema20: ema20_5m,
+                price: close5m,
+                // Aligned = 5m searah dengan sinyal yang akan datang
+                aligned: false, // akan di-set setelah direction ditentukan
+            };
+        }
 
         let longScore = 0, shortScore = 0;
         const longFactors = [], shortFactors = [];
@@ -160,12 +211,48 @@ async function analyzeProAsset(pair) {
             else                       { shortScore += 1; shortFactors.push('Volume Spike Confirmation'); }
         }
 
+        // 10. VWAP Bias (weight: 2)
+        if (vwap15m) {
+            if (close15m > vwap15m) { longScore += 2; longFactors.push('Above VWAP: Bullish Bias'); }
+            else                     { shortScore += 2; shortFactors.push('Below VWAP: Bearish Bias'); }
+        }
+
+        // 11. 4H Trend Alignment (weight: 2)
+        if (trend4h === 'UPTREND')   { longScore += 2; longFactors.push('4H Trend: Bullish'); }
+        else if (trend4h === 'DOWNTREND') { shortScore += 2; shortFactors.push('4H Trend: Bearish'); }
+
+        // 12. RSI Divergence (weight: 3 — high conviction reversal signal)
+        if (divergence15m === 'BULLISH_DIVERGENCE') { longScore += 3; longFactors.push('RSI Bullish Divergence 15m'); }
+        else if (divergence15m === 'BEARISH_DIVERGENCE') { shortScore += 3; shortFactors.push('RSI Bearish Divergence 15m'); }
+
         // Skip pair on tied score — no clear directional bias
         if (longScore === shortScore) return null;
 
         const direction  = longScore > shortScore ? 'LONG' : 'SHORT';
         const finalScore = direction === 'LONG' ? longScore : shortScore;
         const factors    = direction === 'LONG' ? longFactors : shortFactors;
+
+        // ── FILTER 2: Block counter-trend vs 4H ─────────────────────────────
+        if (trend4h !== 'RANGING') {
+            if (direction === 'LONG'  && trend4h === 'DOWNTREND') return null;
+            if (direction === 'SHORT' && trend4h === 'UPTREND')   return null;
+        }
+
+        // ── FILTER 3: Funding Rate extreme ──────────────────────────────────
+        if (fundingRate !== null) {
+            if (direction === 'LONG'  && fundingRate > 0.1)  return null; // over-leveraged long, squeeze risk
+            if (direction === 'SHORT' && fundingRate < -0.1) return null; // over-leveraged short, squeeze risk
+        }
+
+        // Tentukan apakah 5m aligned dengan sinyal
+        if (confirm5m.rsi !== null) {
+            const rsi5m = confirm5m.rsi;
+            if (direction === 'LONG') {
+                confirm5m.aligned = confirm5m.trend === 'UP' && rsi5m > 45 && rsi5m < 75 && confirm5m.rsiRising;
+            } else {
+                confirm5m.aligned = confirm5m.trend === 'DOWN' && rsi5m < 55 && rsi5m > 25 && !confirm5m.rsiRising;
+            }
+        }
 
         const atr15m = calcATR(candles15m, 14);
         const price  = close15m;
@@ -188,9 +275,12 @@ async function analyzeProAsset(pair) {
             symbol, pair: pair.name,
             direction, price, sl, tp, rr,
             score: finalScore, factors, rsi: rsi15m,
-            trend1h, trend15m: close15m > ema20_15m ? 'UP' : 'DOWN',
+            trend4h, trend1h, trend15m: close15m > ema20_15m ? 'UP' : 'DOWN',
             marketCondition: (atr15m / price * 100) > 2 ? 'Volatile' : 'Trending',
-            change24h: change24h || 0
+            change24h: change24h || 0,
+            vwap: vwap15m,
+            fundingRate: fundingRate !== null ? fundingRate : null,
+            confirm5m,
         };
     } catch (err) {
         console.error(`[ProScanner] Error on ${pair.symbol}:`, err.message);
@@ -199,6 +289,10 @@ async function analyzeProAsset(pair) {
 }
 
 async function fastScan(topN = 1) {
+    // ── FILTER 4: Session filter — skip low-liquidity inter-session ──────────
+    const session = getSession();
+    if (!session.active) throw new Error(`INTER_SESSION:${session.name}`);
+
     const results = await Promise.allSettled(PRO_PAIRS.map(p => analyzeProAsset(p)));
     const valid = results
         .filter(r => r.status === 'fulfilled' && r.value !== null)
