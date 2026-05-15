@@ -27,6 +27,7 @@ module.exports = async (req, res) => {
           `⚡ /fast — <b>Sinyal instan sekarang</b>\n` +
           `🔍 /high — Scanning high-probability setup\n` +
           `📐 /quant — <b>Quant analysis: momentum screener &amp; stat report</b>\n` +
+          `🔄 /quant reversion — <b>Mean reversion scan: cari coin overextended</b>\n` +
           `🔐 /crypto — <b>Dampak berita ekonomi ke market</b>\n` +
           `📰 /news — Berita market &amp; crypto terbaru\n` +
           `📈 /trend — <b>Analisis Tren Sosmed</b>\n\n` +
@@ -43,8 +44,14 @@ module.exports = async (req, res) => {
           { parse_mode: 'HTML' }
         );
       } else if (text.startsWith('/quant')) {
-        const { runQuantAnalysis } = require('../quant');
-        await runQuantAnalysis(bot, chatId);
+        const args = text.trim().split(/\s+/);
+        if (args[1] === 'reversion') {
+          const { runQuantReversion } = require('../quant');
+          await runQuantReversion(bot, chatId);
+        } else {
+          const { runQuantAnalysis } = require('../quant');
+          await runQuantAnalysis(bot, chatId);
+        }
       } else if (text.startsWith('/fast')) {
         const args = text.trim().split(/\s+/);
         const keyword = args[1];
