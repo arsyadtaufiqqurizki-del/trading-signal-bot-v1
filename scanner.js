@@ -9,8 +9,8 @@ const {
 const { fmt } = require('./utils');
 
 const TIER_CONFIG = {
-  1: { minConfluence: 9, adxMin: 20, minRR: 2.2, requireExecConfirm: true, minScoreGap: 4 },
-  2: { minConfluence: 8, adxMin: 20, minRR: 2.2, requireExecConfirm: true, minScoreGap: 4 },
+  1: { minConfluence: 8, adxMin: 20, minRR: 2.2, requireExecConfirm: true, minScoreGap: 3 },
+  2: { minConfluence: 7, adxMin: 20, minRR: 2.2, requireExecConfirm: true, minScoreGap: 3 },
   3: { minConfluence: 7, adxMin: 17, minRR: 2.0, requireExecConfirm: true, minScoreGap: 3 },
   4: { minConfluence: 6, adxMin: 15, minRR: 1.8, requireExecConfirm: true, minScoreGap: 3 },
 };
@@ -366,17 +366,21 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
   // Hard block Tier 4 di luar sesi optimal — terlalu rentan SL hunting
   if (pair.tier === 4 && !sessionInfo.optimal) return null;
 
-  // Volume profile gate: penalti jika volume tidak rising (konfirmasi conviction rendah)
+  // Volume profile gate: soft penalty jika volume tidak rising
   const ltfVolumeRising = isVolumeRising(ltfCandles);
-  if (!ltfVolumeRising) { longScore -= 2; shortScore -= 2; }
+  if (!ltfVolumeRising) { longScore -= 1; shortScore -= 1; }
 
-  // Trend alignment: hard block jika arah berlawanan dengan HTF bias atau LTF trend
+  // Trend alignment: hard block hanya jika LTF aktif berlawanan (RANGING diizinkan)
   const longTrendOk  = htfBias !== 'BEARISH' && ltfStruct.trend !== 'DOWNTREND';
   const shortTrendOk = htfBias !== 'BULLISH' && ltfStruct.trend !== 'UPTREND';
+  // Jika LTF RANGING, izinkan kedua arah (pasar konsolidasi bisa breakout keduanya)
+  const ltfRanging = ltfStruct.trend === 'RANGING';
+  const longAllowed  = ltfRanging || longTrendOk;
+  const shortAllowed = ltfRanging || shortTrendOk;
 
   let signal = null;
 
-  if (longScore >= cfg.minConfluence && longScore >= shortScore + cfg.minScoreGap && longTrendOk) {
+  if (longScore >= cfg.minConfluence && longScore >= shortScore + cfg.minScoreGap && longAllowed) {
     const isLongConfirmed = (execBos === 'BULLISH_BOS' || execDiv === 'BULLISH_DIVERGENCE');
     if (!isLongConfirmed) return null;
 
@@ -423,7 +427,7 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
         invalidationLevel: sl,
       };
     }
-  } else if (shortScore >= cfg.minConfluence && shortScore >= longScore + cfg.minScoreGap && shortTrendOk) {
+  } else if (shortScore >= cfg.minConfluence && shortScore >= longScore + cfg.minScoreGap && shortAllowed) {
     const isShortConfirmed = (execBos === 'BEARISH_BOS' || execDiv === 'BEARISH_DIVERGENCE');
     if (!isShortConfirmed) return null;
 
