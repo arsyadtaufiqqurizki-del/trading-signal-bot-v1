@@ -9,10 +9,10 @@ const {
 const { fmt } = require('./utils');
 
 const TIER_CONFIG = {
-  1: { minConfluence: 7, adxMin: 20, minRR: 2.2, requireExecConfirm: true  },
-  2: { minConfluence: 7, adxMin: 20, minRR: 2.2, requireExecConfirm: true  },
-  3: { minConfluence: 6, adxMin: 17, minRR: 2.0, requireExecConfirm: true  },
-  4: { minConfluence: 5, adxMin: 15, minRR: 1.8, requireExecConfirm: true  },
+  1: { minConfluence: 9, adxMin: 20, minRR: 2.2, requireExecConfirm: true, minScoreGap: 4 },
+  2: { minConfluence: 8, adxMin: 20, minRR: 2.2, requireExecConfirm: true, minScoreGap: 4 },
+  3: { minConfluence: 7, adxMin: 17, minRR: 2.0, requireExecConfirm: true, minScoreGap: 3 },
+  4: { minConfluence: 6, adxMin: 15, minRR: 1.8, requireExecConfirm: true, minScoreGap: 3 },
 };
 
 const PAIRS = [
@@ -135,6 +135,13 @@ function checkFvgMitigation(fvgs, candles) {
   });
 }
 
+function isVolumeRising(candles) {
+  if (candles.length < 10) return false;
+  const recent5 = candles.slice(-5).reduce((s, c) => s + c.volume, 0);
+  const prev5   = candles.slice(-10, -5).reduce((s, c) => s + c.volume, 0);
+  return recent5 > prev5;
+}
+
 async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
   const [htfCandles, ltfCandles, execCandles] = await Promise.all([
     getKlines(pair.symbol, pair.htf, 200),
@@ -169,15 +176,26 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
   const ltfFvgs = detectFVG(ltfCandles);
   const ltfObs  = detectOrderBlocks(ltfCandles);
 
+  // SMC Detection (on HTF — 4H OB/FVG for higher-weight confluence)
+  const htfFvgs = detectFVG(htfCandles);
+  const htfObs  = detectOrderBlocks(htfCandles);
+
   // ADX — trend strength filter
   const ltfAdx = calcADX(ltfCandles, 14);
 
-  // Active FVGs: unmitigated + recent 50 candles
+  // Active FVGs: unmitigated + recent 30 candles (tightened from 50)
   const activeFvgs = checkFvgMitigation(ltfFvgs, ltfCandles)
-    .filter(fvg => fvg.index >= ltfCandles.length - 50);
+    .filter(fvg => fvg.index >= ltfCandles.length - 30);
 
-  // Recent OBs: last 30 candles only
-  const recentObs = ltfObs.filter(ob => ob.index >= ltfCandles.length - 30);
+  // Recent OBs: last 20 candles only (tightened from 30)
+  const recentObs = ltfObs.filter(ob => ob.index >= ltfCandles.length - 20);
+
+  // Active HTF FVGs: unmitigated + recent 20 candles
+  const activeHtfFvgs = checkFvgMitigation(htfFvgs, htfCandles)
+    .filter(fvg => fvg.index >= htfCandles.length - 20);
+
+  // Recent HTF OBs: last 15 candles only
+  const recentHtfObs = htfObs.filter(ob => ob.index >= htfCandles.length - 15);
 
   // Execution Trigger (m15)
   const execStruct = detectStructure(execCandles);
@@ -247,9 +265,9 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
   if (curRsi < 45 && curRsi > 15) { longScore += 1; longFactors.push(`RSI Low (${fmt(curRsi, 1)}) ✅`); }
   if (curRsi > 55 && curRsi < 85) { shortScore += 1; shortFactors.push(`RSI High (${fmt(curRsi, 1)}) ✅`); }
 
-  // 4. RSI divergence (Medium Weight)
-  if (ltfDiv === 'BULLISH_DIVERGENCE') { longScore += 2; longFactors.push('Bullish RSI Divergence 🔥'); }
-  if (ltfDiv === 'BEARISH_DIVERGENCE') { shortScore += 2; shortFactors.push('Bearish RSI Divergence 🔥'); }
+  // 4. RSI divergence — hanya valid di zona RSI ekstrim (Medium Weight)
+  if (ltfDiv === 'BULLISH_DIVERGENCE' && curRsi < 48) { longScore += 2; longFactors.push('Bullish RSI Divergence 🔥'); }
+  if (ltfDiv === 'BEARISH_DIVERGENCE' && curRsi > 52) { shortScore += 2; shortFactors.push('Bearish RSI Divergence 🔥'); }
 
   // 5. BOS (Medium Weight)
   if (ltfBos === 'BULLISH_BOS') { longScore += 2; longFactors.push('Bullish BOS Confirmed ✅'); }
@@ -276,6 +294,18 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
   const nearBearFvg = activeFvgs.find(fvg => fvg.type === 'BEARISH_FVG' && price <= fvg.top && price >= fvg.bottom);
   if (nearBullFvg) { longScore += 2; longFactors.push(`Price filling Bullish FVG ✅`); }
   if (nearBearFvg) { shortScore += 2; shortFactors.push(`Price filling Bearish FVG ✅`); }
+
+  // 8b. HTF Order Block Touch 4H — sinyal terkuat SMC (Highest Weight)
+  const nearHtfBullOb = recentHtfObs.find(ob => ob.type === 'BULLISH_OB' && price <= ob.top && price >= ob.bottom);
+  const nearHtfBearOb = recentHtfObs.find(ob => ob.type === 'BEARISH_OB' && price <= ob.top && price >= ob.bottom);
+  if (nearHtfBullOb) { longScore  += 3; longFactors.push('Price in HTF Bullish OB 4H 🏦'); }
+  if (nearHtfBearOb) { shortScore += 3; shortFactors.push('Price in HTF Bearish OB 4H 🏦'); }
+
+  // 8c. HTF FVG Filling 4H (High Weight)
+  const nearHtfBullFvg = activeHtfFvgs.find(fvg => fvg.type === 'BULLISH_FVG' && price <= fvg.top && price >= fvg.bottom);
+  const nearHtfBearFvg = activeHtfFvgs.find(fvg => fvg.type === 'BEARISH_FVG' && price <= fvg.top && price >= fvg.bottom);
+  if (nearHtfBullFvg) { longScore  += 2; longFactors.push('Price filling HTF Bullish FVG 4H 🏦'); }
+  if (nearHtfBearFvg) { shortScore += 2; shortFactors.push('Price filling HTF Bearish FVG 4H 🏦'); }
 
   // 9. Key level proximity (Low Weight)
   const nearSupport = keyLevels.find(l => l.type === 'SUPPORT' && Math.abs(price - l.price) / price < 0.005);
@@ -320,6 +350,9 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
   if (ltfAdx < cfg.adxMin) return null;
   if (ltfAdx < cfg.adxMin + 5) { longScore -= 1; shortScore -= 1; }
 
+  // Ranging market block: trend-following di pasar ranging / ADX lemah = high false signal rate
+  if (ltfStruct.trend === 'RANGING' && ltfAdx < 25) return null;
+
   // CLIMAX phase block: trend-following setups di fase exhaustion cenderung gagal
   const isClimax = ltfAdx > 35 && atrPct > 3;
   if (isClimax) {
@@ -333,17 +366,25 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
   // Hard block Tier 4 di luar sesi optimal — terlalu rentan SL hunting
   if (pair.tier === 4 && !sessionInfo.optimal) return null;
 
+  // Volume profile gate: penalti jika volume tidak rising (konfirmasi conviction rendah)
+  const ltfVolumeRising = isVolumeRising(ltfCandles);
+  if (!ltfVolumeRising) { longScore -= 2; shortScore -= 2; }
+
+  // Trend alignment: hard block jika arah berlawanan dengan HTF bias atau LTF trend
+  const longTrendOk  = htfBias !== 'BEARISH' && ltfStruct.trend !== 'DOWNTREND';
+  const shortTrendOk = htfBias !== 'BULLISH' && ltfStruct.trend !== 'UPTREND';
+
   let signal = null;
 
-  if (longScore >= cfg.minConfluence && longScore > shortScore) {
+  if (longScore >= cfg.minConfluence && longScore >= shortScore + cfg.minScoreGap && longTrendOk) {
     const isLongConfirmed = (execBos === 'BULLISH_BOS' || execDiv === 'BULLISH_DIVERGENCE');
-    if (cfg.requireExecConfirm && !isLongConfirmed) return null;
+    if (!isLongConfirmed) return null;
 
     const atr = ltfAtr;
     const slRaw = calcStructureSL(price, 'LONG', ltfStruct, atr, htfStruct);
     let sl = parseFloat(slRaw.toFixed(price > 1000 ? 0 : 4));
     // Minimum SL distance: harus minimal 1.2x ATR dari entry untuk hindari wick sweep
-    if (price - sl < atr * 1.2) sl = parseFloat((price - atr * 2.0).toFixed(price > 1000 ? 0 : 4));
+    if (price - sl < atr * 1.2) sl = parseFloat((price - atr * 2.5).toFixed(price > 1000 ? 0 : 4));
     const tp1 = parseFloat((price + atr * 3.0).toFixed(price > 1000 ? 0 : 4));
     const tp2 = parseFloat((price + atr * 5.0).toFixed(price > 1000 ? 0 : 4));
 
@@ -362,9 +403,7 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
     const riskCons = entryConservative - sl;
     const rrCons = parseFloat(((tp1 - entryConservative) / riskCons).toFixed(2));
 
-    const execConfirmLabel = isLongConfirmed
-      ? `m15 Confirmation: ${execBos === 'BULLISH_BOS' ? 'BOS' : 'Divergence'} ✅`
-      : `m15 Confirmation: Score-based (T${pair.tier}) ⚠️`;
+    const execConfirmLabel = `m15 Confirmation: ${execBos === 'BULLISH_BOS' ? 'BOS' : 'Divergence'} ✅`;
 
     if (rrAgg >= cfg.minRR && sl > 0) {
       const marketPhase    = classifyMarketPhase(ltfAdx, atrPct, htfBias);
@@ -384,18 +423,18 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
         invalidationLevel: sl,
       };
     }
-  } else if (shortScore >= cfg.minConfluence && shortScore > longScore) {
+  } else if (shortScore >= cfg.minConfluence && shortScore >= longScore + cfg.minScoreGap && shortTrendOk) {
     const isShortConfirmed = (execBos === 'BEARISH_BOS' || execDiv === 'BEARISH_DIVERGENCE');
-    if (cfg.requireExecConfirm && !isShortConfirmed) return null;
+    if (!isShortConfirmed) return null;
 
     const atr = ltfAtr;
     const slRawShort = calcStructureSL(price, 'SHORT', ltfStruct, atr, htfStruct);
     let slShort = parseFloat(slRawShort.toFixed(price > 1000 ? 0 : 4));
     // Minimum SL distance: harus minimal 1.2x ATR dari entry
-    if (slShort - price < atr * 1.2) slShort = parseFloat((price + atr * 2.0).toFixed(price > 1000 ? 0 : 4));
+    if (slShort - price < atr * 1.2) slShort = parseFloat((price + atr * 2.5).toFixed(price > 1000 ? 0 : 4));
     const tp1 = parseFloat((price - atr * 3.0).toFixed(price > 1000 ? 0 : 4));
     const tp2 = parseFloat((price - atr * 5.0).toFixed(price > 1000 ? 0 : 4));
-    
+
     // Hybrid Entry Calculation
     const entryAggressive = price;
     let entryConservative = price;
@@ -411,9 +450,7 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
     const riskCons = slShort - entryConservative;
     const rrCons = parseFloat(((entryConservative - tp1) / riskCons).toFixed(2));
 
-    const execConfirmLabel = isShortConfirmed
-      ? `m15 Confirmation: ${execBos === 'BEARISH_BOS' ? 'BOS' : 'Divergence'} ✅`
-      : `m15 Confirmation: Score-based (T${pair.tier}) ⚠️`;
+    const execConfirmLabel = `m15 Confirmation: ${execBos === 'BEARISH_BOS' ? 'BOS' : 'Divergence'} ✅`;
 
     if (rrAgg >= cfg.minRR && tp1 > 0) {
       const marketPhase    = classifyMarketPhase(ltfAdx, atrPct, htfBias);
