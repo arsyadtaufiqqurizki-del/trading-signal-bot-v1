@@ -28,6 +28,7 @@ module.exports = async (req, res) => {
           `🔍 /high — Scanning high-probability setup\n` +
           `📐 /quant — <b>Quant analysis: momentum screener &amp; stat report</b>\n` +
           `🔄 /quant reversion — <b>Mean reversion scan: cari coin overextended</b>\n` +
+          `⛓️ /onchain — <b>Analisis on-chain: MVRV, TVL, Fear &amp; Greed</b>\n` +
           `🔐 /crypto — <b>Dampak berita ekonomi ke market</b>\n` +
           `📰 /news — Berita market &amp; crypto terbaru\n` +
           `📈 /trend — <b>Analisis Tren Sosmed</b>\n\n` +
@@ -51,6 +52,24 @@ module.exports = async (req, res) => {
         } else {
           const { runQuantAnalysis } = require('../quant');
           await runQuantAnalysis(bot, chatId);
+        }
+      } else if (text.startsWith('/onchain')) {
+        const args   = text.trim().split(/\s+/);
+        const target = args[1]?.toLowerCase();
+        const valid  = ['btc', 'eth', 'defi'];
+
+        if (target && !valid.includes(target)) {
+          await bot.sendMessage(chatId,
+            `❓ <b>Target tidak valid.</b>\n\nGunakan:\n` +
+            `• <code>/onchain</code> — Overview semua metrics\n` +
+            `• <code>/onchain btc</code> — BTC: MVRV, NVT, Hash Rate\n` +
+            `• <code>/onchain eth</code> — ETH: Staking + DeFi TVL\n` +
+            `• <code>/onchain defi</code> — DeFi TVL &amp; Top Chains`,
+            { parse_mode: 'HTML' }
+          );
+        } else {
+          const { runOnchainAnalysis } = require('../onchain');
+          await runOnchainAnalysis(bot, chatId, target || 'all');
         }
       } else if (text.startsWith('/fast')) {
         const args = text.trim().split(/\s+/);
