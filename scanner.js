@@ -9,10 +9,10 @@ const {
 const { fmt } = require('./utils');
 
 const TIER_CONFIG = {
-  1: { minConfluence: 8, adxMin: 20, minRR: 2.2, requireExecConfirm: true, minScoreGap: 2 },
-  2: { minConfluence: 7, adxMin: 20, minRR: 2.2, requireExecConfirm: true, minScoreGap: 2 },
-  3: { minConfluence: 7, adxMin: 17, minRR: 2.0, requireExecConfirm: true, minScoreGap: 2 },
-  4: { minConfluence: 6, adxMin: 15, minRR: 1.8, requireExecConfirm: true, minScoreGap: 2 },
+  1: { minConfluence: 7, adxMin: 18, minRR: 2.2, minScoreGap: 1 },
+  2: { minConfluence: 6, adxMin: 18, minRR: 2.2, minScoreGap: 1 },
+  3: { minConfluence: 6, adxMin: 15, minRR: 2.0, minScoreGap: 1 },
+  4: { minConfluence: 5, adxMin: 13, minRR: 1.8, minScoreGap: 1 },
 };
 
 const PAIRS = [
@@ -350,22 +350,12 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
   if (ltfAdx < cfg.adxMin) return null;
   if (ltfAdx < cfg.adxMin + 5) { longScore -= 1; shortScore -= 1; }
 
-  // Ranging market block: trend-following di pasar ranging / ADX lemah = high false signal rate
-  if (ltfStruct.trend === 'RANGING' && ltfAdx < 25) return null;
-
   // CLIMAX phase block: trend-following setups di fase exhaustion cenderung gagal
   const isClimax = ltfAdx > 35 && atrPct > 3;
   if (isClimax) {
     if (htfBias === 'BULLISH') longScore  -= 3;
     if (htfBias === 'BEARISH') shortScore -= 3;
   }
-
-  // Session filter: soft penalty untuk off-hours (noise lebih tinggi, likuiditas rendah)
-  if (!sessionInfo.optimal) { longScore -= 1; shortScore -= 1; }
-
-  // Volume profile gate: soft penalty jika volume tidak rising
-  const ltfVolumeRising = isVolumeRising(ltfCandles);
-  if (!ltfVolumeRising) { longScore -= 1; shortScore -= 1; }
 
   // Trend alignment: hard block hanya jika LTF aktif berlawanan (RANGING diizinkan)
   const longTrendOk  = htfBias !== 'BEARISH' && ltfStruct.trend !== 'DOWNTREND';
@@ -379,8 +369,6 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
 
   if (longScore >= cfg.minConfluence && longScore >= shortScore + cfg.minScoreGap && longAllowed) {
     const isLongConfirmed = (execBos === 'BULLISH_BOS' || execDiv === 'BULLISH_DIVERGENCE');
-    if (!isLongConfirmed) longScore -= 2;
-    if (longScore < cfg.minConfluence) return null;
 
     const atr = ltfAtr;
     const slRaw = calcStructureSL(price, 'LONG', ltfStruct, atr, htfStruct);
@@ -429,8 +417,6 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
     }
   } else if (shortScore >= cfg.minConfluence && shortScore >= longScore + cfg.minScoreGap && shortAllowed) {
     const isShortConfirmed = (execBos === 'BEARISH_BOS' || execDiv === 'BEARISH_DIVERGENCE');
-    if (!isShortConfirmed) shortScore -= 2;
-    if (shortScore < cfg.minConfluence) return null;
 
     const atr = ltfAtr;
     const slRawShort = calcStructureSL(price, 'SHORT', ltfStruct, atr, htfStruct);
