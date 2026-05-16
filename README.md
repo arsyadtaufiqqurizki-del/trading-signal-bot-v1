@@ -36,9 +36,3 @@ In the fast-paced financial market, executing high-quality trades requires analy
 
 This bot was engineered to automate the intelligence-gathering process. By leveraging AI, it translates complex datasets into a digestible format instantly, allowing for rapid, data-driven decision-making and disciplined performance tracking.
 
-## 🚀 How to Use (For Local Deployment)
-*(Bagian ini opsional, diisi jika Anda ingin orang lain bisa menjalankan bot ini di komputer mereka. Jika tidak, Anda bisa menghapus bagian ini).*
-
-1. Clone the repository:
-   ```bash
-   git clone [https://github.com/username/market-intel-cad-bot.git](https://github.com/username/market-intel-cad-bot.git)
