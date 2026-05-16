@@ -29,6 +29,7 @@ module.exports = async (req, res) => {
           `📐 /quant — <b>Quant analysis: momentum screener &amp; stat report</b>\n` +
           `🔄 /quant reversion — <b>Mean reversion scan: cari coin overextended</b>\n` +
           `⛓️ /onchain — <b>Analisis on-chain: MVRV, TVL, Fear &amp; Greed</b>\n` +
+          `💥 /liq — <b>Likuidasi &amp; Long/Short Ratio futures market</b>\n` +
           `🔐 /crypto — <b>Dampak berita ekonomi ke market</b>\n` +
           `📰 /news — Berita market &amp; crypto terbaru\n` +
           `📈 /trend — <b>Analisis Tren Sosmed</b>\n\n` +
@@ -44,6 +45,20 @@ module.exports = async (req, res) => {
           `⏳ /pending — Lihat sinyal yang belum dicatat`,
           { parse_mode: 'HTML' }
         );
+      } else if (text.startsWith('/liq')) {
+        const args    = text.trim().split(/\s+/);
+        const sub     = args[1]?.toLowerCase();
+
+        if (!sub) {
+          const { runLiqOverview } = require('../liq');
+          await runLiqOverview(bot, chatId);
+        } else if (sub === 'whale') {
+          const { runLiqWhale } = require('../liq');
+          await runLiqWhale(bot, chatId);
+        } else {
+          const { runLiqPair } = require('../liq');
+          await runLiqPair(bot, chatId, sub);
+        }
       } else if (text.startsWith('/quant')) {
         const args = text.trim().split(/\s+/);
         if (args[1] === 'reversion') {
