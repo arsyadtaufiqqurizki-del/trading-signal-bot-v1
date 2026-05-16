@@ -28,8 +28,7 @@ The bot is categorized into three main operational pillars:
 ## 🛠️ Tech Stack
 *   **Core AI Integration:** Claude Code / Anthropic API
 *   **Platform:** Telegram Bot API
-*   **Data Processing:** (Tambahkan bahasa pemrograman Anda di sini, misalnya: Python / Node.js)
-*   **Data Sources:** (Opsional: Sebutkan jika Anda menggunakan API tertentu seperti Binance API, CoinGecko, dll)
+*   **Data Sources:** Binance API, CoinGecko, Google RSS, Yahoo Finance
 
 ## 💡 Why I Built This
 In the fast-paced financial market, executing high-quality trades requires analyzing multiple data variables—from global macroeconomic news to micro-level on-chain data. Manually tracking these takes hours. 
