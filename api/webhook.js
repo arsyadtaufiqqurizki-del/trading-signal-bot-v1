@@ -30,6 +30,7 @@ module.exports = async (req, res) => {
           `🔄 /quant reversion — <b>Mean reversion scan: cari coin overextended</b>\n` +
           `⛓️ /onchain — <b>Analisis on-chain: MVRV, TVL, Fear &amp; Greed</b>\n` +
           `💥 /liq — <b>Likuidasi &amp; Long/Short Ratio futures market</b>\n` +
+          `🎯 /poly — <b>Polymarket: sinyal dari prediction market global</b>\n` +
           `🔐 /crypto — <b>Dampak berita ekonomi ke market</b>\n` +
           `📰 /news — Berita market &amp; crypto terbaru\n` +
           `📈 /trend — <b>Analisis Tren Sosmed</b>\n\n` +
@@ -58,6 +59,28 @@ module.exports = async (req, res) => {
         } else {
           const { runLiqPair } = require('../liq');
           await runLiqPair(bot, chatId, sub);
+        }
+      } else if (text.startsWith('/poly')) {
+        const args = text.trim().split(/\s+/);
+        const sub  = args[1]?.toLowerCase();
+        const validSubs = ['btc', 'eth', 'macro', 'hot'];
+
+        if (sub && !validSubs.includes(sub)) {
+          await bot.sendMessage(chatId,
+            `❓ <b>Sub-command tidak valid.</b>\n\nGunakan:\n` +
+            `• <code>/poly</code> — Overview semua markets + sinyal komposit\n` +
+            `• <code>/poly btc</code> — Market spesifik Bitcoin\n` +
+            `• <code>/poly eth</code> — Market spesifik Ethereum\n` +
+            `• <code>/poly macro</code> — Fed, inflasi, resesi\n` +
+            `• <code>/poly hot</code> — Markets dengan aktivitas 24h tertinggi`,
+            { parse_mode: 'HTML' }
+          );
+        } else if (!sub) {
+          const { runPolyOverview } = require('../polymarket');
+          await runPolyOverview(bot, chatId);
+        } else {
+          const { runPolyCategory } = require('../polymarket');
+          await runPolyCategory(bot, chatId, sub);
         }
       } else if (text.startsWith('/quant')) {
         const args = text.trim().split(/\s+/);
