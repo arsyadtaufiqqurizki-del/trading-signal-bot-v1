@@ -142,7 +142,7 @@ ${statusEmoji} <b>KONFIRMASI ENTRY 5M</b>
 • <b>Status:</b> <b>${statusText}</b>
 • <b>Trend 5m:</b> ${trendArrow}
 • <b>RSI 5m:</b> ${fmt(c5.rsi, 1)} (${rsiDir})${patternLine}${volLine}
-• <b>EMA 9 vs 20:</b> ${c5.ema9 > c5.ema20 ? 'EMA9 > EMA20 🟢' : 'EMA9 < EMA20 🔴'}
+• <b>EMA 9 vs 20:</b> ${c5.ema9 > c5.ema20 ? 'EMA9 &gt; EMA20 🟢' : 'EMA9 &lt; EMA20 🔴'}
 
 💡 <i>${c5.aligned
   ? `5M sudah aligned — entry ${sig.direction === 'LONG' ? 'agresif oke, atau tunggu retest EMA 9' : 'agresif oke, atau tunggu rejection EMA 9'}.`
