@@ -9,10 +9,10 @@ const {
 const { fmt } = require('./utils');
 
 const TIER_CONFIG = {
-  1: { minConfluence: 8, adxMin: 20, minRR: 2.2, requireExecConfirm: true, minScoreGap: 3 },
-  2: { minConfluence: 7, adxMin: 20, minRR: 2.2, requireExecConfirm: true, minScoreGap: 3 },
-  3: { minConfluence: 7, adxMin: 17, minRR: 2.0, requireExecConfirm: true, minScoreGap: 3 },
-  4: { minConfluence: 6, adxMin: 15, minRR: 1.8, requireExecConfirm: true, minScoreGap: 3 },
+  1: { minConfluence: 8, adxMin: 20, minRR: 2.2, requireExecConfirm: true, minScoreGap: 2 },
+  2: { minConfluence: 7, adxMin: 20, minRR: 2.2, requireExecConfirm: true, minScoreGap: 2 },
+  3: { minConfluence: 7, adxMin: 17, minRR: 2.0, requireExecConfirm: true, minScoreGap: 2 },
+  4: { minConfluence: 6, adxMin: 15, minRR: 1.8, requireExecConfirm: true, minScoreGap: 2 },
 };
 
 const PAIRS = [
@@ -382,7 +382,8 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
 
   if (longScore >= cfg.minConfluence && longScore >= shortScore + cfg.minScoreGap && longAllowed) {
     const isLongConfirmed = (execBos === 'BULLISH_BOS' || execDiv === 'BULLISH_DIVERGENCE');
-    if (!isLongConfirmed) return null;
+    if (!isLongConfirmed) longScore -= 2;
+    if (longScore < cfg.minConfluence) return null;
 
     const atr = ltfAtr;
     const slRaw = calcStructureSL(price, 'LONG', ltfStruct, atr, htfStruct);
@@ -407,7 +408,9 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
     const riskCons = entryConservative - sl;
     const rrCons = parseFloat(((tp1 - entryConservative) / riskCons).toFixed(2));
 
-    const execConfirmLabel = `m15 Confirmation: ${execBos === 'BULLISH_BOS' ? 'BOS' : 'Divergence'} ✅`;
+    const execConfirmLabel = isLongConfirmed
+      ? `m15 Confirmation: ${execBos === 'BULLISH_BOS' ? 'BOS' : 'Divergence'} ✅`
+      : 'm15 Konfirmasi: Belum Terkonfirmasi ⚠️';
 
     if (rrAgg >= cfg.minRR && sl > 0) {
       const marketPhase    = classifyMarketPhase(ltfAdx, atrPct, htfBias);
@@ -429,7 +432,8 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
     }
   } else if (shortScore >= cfg.minConfluence && shortScore >= longScore + cfg.minScoreGap && shortAllowed) {
     const isShortConfirmed = (execBos === 'BEARISH_BOS' || execDiv === 'BEARISH_DIVERGENCE');
-    if (!isShortConfirmed) return null;
+    if (!isShortConfirmed) shortScore -= 2;
+    if (shortScore < cfg.minConfluence) return null;
 
     const atr = ltfAtr;
     const slRawShort = calcStructureSL(price, 'SHORT', ltfStruct, atr, htfStruct);
@@ -454,7 +458,9 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
     const riskCons = slShort - entryConservative;
     const rrCons = parseFloat(((entryConservative - tp1) / riskCons).toFixed(2));
 
-    const execConfirmLabel = `m15 Confirmation: ${execBos === 'BEARISH_BOS' ? 'BOS' : 'Divergence'} ✅`;
+    const execConfirmLabel = isShortConfirmed
+      ? `m15 Confirmation: ${execBos === 'BEARISH_BOS' ? 'BOS' : 'Divergence'} ✅`
+      : 'm15 Konfirmasi: Belum Terkonfirmasi ⚠️';
 
     if (rrAgg >= cfg.minRR && tp1 > 0) {
       const marketPhase    = classifyMarketPhase(ltfAdx, atrPct, htfBias);
