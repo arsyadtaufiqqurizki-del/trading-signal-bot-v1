@@ -363,9 +363,6 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
   // Session filter: soft penalty untuk off-hours (noise lebih tinggi, likuiditas rendah)
   if (!sessionInfo.optimal) { longScore -= 1; shortScore -= 1; }
 
-  // Hard block Tier 4 di luar sesi optimal — terlalu rentan SL hunting
-  if (pair.tier === 4 && !sessionInfo.optimal) return null;
-
   // Volume profile gate: soft penalty jika volume tidak rising
   const ltfVolumeRising = isVolumeRising(ltfCandles);
   if (!ltfVolumeRising) { longScore -= 1; shortScore -= 1; }
