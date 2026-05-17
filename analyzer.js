@@ -19,9 +19,15 @@ function formatSignal(signal, rank, total) {
 
   // Setup type
   let setupType = 'Trend Continuation';
-  if (signal.liquiditySweep)  setupType = 'Liquidity Sweep Reversal 🎯';
-  else if (signal.divergence) setupType = 'Divergence Reversal';
-  else if (signal.bos)        setupType = 'BOS Breakout';
+  if (signal.isReversal) {
+    setupType = signal.liquiditySweep ? '🔄 Counter-Trend: Liquidity Sweep' : '🔄 Counter-Trend: Divergence Reversal';
+  } else if (signal.liquiditySweep) {
+    setupType = 'Liquidity Sweep Reversal 🎯';
+  } else if (signal.divergence) {
+    setupType = 'Divergence Reversal';
+  } else if (signal.bos) {
+    setupType = 'BOS Breakout';
+  }
 
   // Tier label
   const tierLabel = signal.tier === 4 ? '⚠️ Tier 4 — Volatil'
@@ -33,9 +39,18 @@ function formatSignal(signal, rank, total) {
   const sessionWarn = signal.sessionInfo && !signal.sessionInfo.optimal
     ? `\n⚠️ <i>Di luar sesi optimal — eksekusi dengan hati-hati!</i>` : '';
 
+  // ADX warning
+  const adxWarnLine = signal.adxWarning
+    ? `\n⚠️ <i>ADX ${fmt(signal.adx, 1)} — tren lemah, waspadai false breakout.</i>` : '';
+
   // Liquidity sweep notice
   const sweepLine = signal.liquiditySweep
     ? `\n\n🎯 <b>LIQUIDITY SWEEP DETECTED!</b> Smart money telah sweep ${signal.liquiditySweep === 'BULLISH_SWEEP' ? 'swing low' : 'swing high'} — high-probability reversal.`
+    : '';
+
+  // Reversal warning
+  const reversalWarn = signal.isReversal
+    ? `\n\n🔄 <b>COUNTER-TREND REVERSAL!</b> Setup melawan HTF bias (${signal.htfBias}). Gunakan sizing lebih kecil dan konfirmasi entry dengan ketat.`
     : '';
 
   // Price formatter
@@ -46,8 +61,9 @@ function formatSignal(signal, rank, total) {
   };
 
   // Leverage berdasarkan tier dan market phase
-  const isClimax  = signal.marketPhase && signal.marketPhase.includes('CLIMAX');
-  const leverage  = isClimax ? '2x–3x ⚡ (Hati-hati)'
+  const isClimax = signal.marketPhase && signal.marketPhase.includes('CLIMAX');
+  const leverage = isClimax ? '2x–3x ⚡ (Hati-hati)'
+    : signal.isReversal ? (signal.tier <= 2 ? '3x–5x ⚠️ (Counter-Trend)' : '2x–3x ⚠️ (Counter-Trend)')
     : signal.tier === 1 ? '5x–10x'
     : signal.tier === 2 ? '5x–8x'
     : '3x–5x';
@@ -57,9 +73,13 @@ function formatSignal(signal, rank, total) {
     ? (signal.rsi < 45 ? 'masih memiliki ruang naik' : signal.rsi < 60 ? 'dalam zona neutral-bullish' : 'menunjukkan momentum kuat')
     : (signal.rsi > 55 ? 'masih memiliki ruang turun' : signal.rsi > 40 ? 'dalam zona neutral-bearish' : 'menunjukkan tekanan bearish kuat');
 
-  const reason = signal.direction === 'LONG'
-    ? `HTF bias <b>${signal.htfBias}</b> dikonfirmasi ${signal.factors.length} faktor confluence. RSI 1H di ${fmt(signal.rsi, 1)} ${rsiPos}. ADX ${fmt(signal.adx, 1)} mengonfirmasi kekuatan tren. Entry di zona high-probability dengan SL terstruktur di bawah support.`
-    : `HTF bias <b>${signal.htfBias}</b> dengan tekanan bearish dari ${signal.factors.length} faktor confluence. RSI 1H di ${fmt(signal.rsi, 1)} ${rsiPos}. ADX ${fmt(signal.adx, 1)} mengonfirmasi dominasi seller. SL ditempatkan di atas resistance struktur.`;
+  const reason = signal.isReversal
+    ? (signal.direction === 'LONG'
+      ? `Setup <b>counter-trend LONG</b> — harga berpotensi reversal dari downtrend. Dikonfirmasi oleh ${signal.liquiditySweep ? 'Liquidity Sweep' : 'RSI Divergence'} dan ${signal.factors.length} faktor confluence. RSI 1H ${fmt(signal.rsi, 1)}. TP konservatif, gunakan sizing lebih kecil.`
+      : `Setup <b>counter-trend SHORT</b> — harga berpotensi reversal dari uptrend. Dikonfirmasi oleh ${signal.liquiditySweep ? 'Liquidity Sweep' : 'RSI Divergence'} dan ${signal.factors.length} faktor confluence. RSI 1H ${fmt(signal.rsi, 1)}. TP konservatif, gunakan sizing lebih kecil.`)
+    : (signal.direction === 'LONG'
+      ? `HTF bias <b>${signal.htfBias}</b> dikonfirmasi ${signal.factors.length} faktor confluence. RSI 1H di ${fmt(signal.rsi, 1)} ${rsiPos}. ADX ${fmt(signal.adx, 1)} mengonfirmasi kekuatan tren. Entry di zona high-probability dengan SL terstruktur di bawah support.`
+      : `HTF bias <b>${signal.htfBias}</b> dengan tekanan bearish dari ${signal.factors.length} faktor confluence. RSI 1H di ${fmt(signal.rsi, 1)} ${rsiPos}. ADX ${fmt(signal.adx, 1)} mengonfirmasi dominasi seller. SL ditempatkan di atas resistance struktur.`);
 
   // Confluence factors list
   const confluenceList = signal.factors.map(f => `  ✅ ${f}`).join('\n');
@@ -78,8 +98,8 @@ function formatSignal(signal, rank, total) {
 <b>${signal.direction === 'LONG' ? '🟢' : '🔴'} ${signal.pair}</b> | ${dirEmoji}
 <b>Kategori:</b> ${tierLabel}
 <b>Setup:</b> ${setupType}
-<b>Session:</b> ${signal.sessionInfo ? signal.sessionInfo.name : '-'}${sessionWarn}
-<b>Market Phase:</b> ${signal.marketPhase || '-'}${sweepLine}
+<b>Session:</b> ${signal.sessionInfo ? signal.sessionInfo.name : '-'}${sessionWarn}${adxWarnLine}
+<b>Market Phase:</b> ${signal.marketPhase || '-'}${sweepLine}${reversalWarn}
 
 <b>📊 CONFLUENCE SCORE:</b>
 ${bar} ${score} pts (${confLevel})

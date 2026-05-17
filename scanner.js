@@ -343,11 +343,27 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
   if (ltfSweep === 'BULLISH_SWEEP') { longScore  += 3; longFactors.push('Bullish Liquidity Sweep 🎯'); }
   if (ltfSweep === 'BEARISH_SWEEP') { shortScore += 3; shortFactors.push('Bearish Liquidity Sweep 🎯'); }
 
+  // 14. 3 Consecutive H1 Candles — momentum berkelanjutan (Medium Weight)
+  const last3Ltf   = ltfCandles.slice(-3);
+  const allBullish3 = last3Ltf.every(c => c.close > c.open);
+  const allBearish3 = last3Ltf.every(c => c.close < c.open);
+  if (allBullish3) { longScore  += 2; longFactors.push('3 Bullish Candles H1 ✅'); }
+  if (allBearish3) { shortScore += 2; shortFactors.push('3 Bearish Candles H1 ✅'); }
+
+  // 15. H1 Spike Kuat — body > 2x rata-rata body 20 candle (Low Weight)
+  const lastLtfCandle = ltfCandles[ltfCandles.length - 1];
+  const lastBody      = Math.abs(lastLtfCandle.close - lastLtfCandle.open);
+  const avgBody       = ltfCandles.slice(-20).reduce((s, c) => s + Math.abs(c.close - c.open), 0) / 20;
+  if (lastBody > avgBody * 2) {
+    if (lastLtfCandle.close > lastLtfCandle.open) { longScore  += 1; longFactors.push('H1 Bullish Spike ⚡'); }
+    else                                           { shortScore += 1; shortFactors.push('H1 Bearish Spike ⚡'); }
+  }
+
   // ── SIGNAL GENERATION ────────────────────────────────────────────────────
   const cfg = TIER_CONFIG[pair.tier] || TIER_CONFIG[1];
 
-  // ADX gate: tier-specific minimum trend strength
-  if (ltfAdx < cfg.adxMin) return { signal: null, debug: { adx: ltfAdx, htfBias, ltfTrend: ltfStruct.trend, longScore, shortScore, blockedBy: `ADX ${ltfAdx.toFixed(1)} terlalu rendah (min ${cfg.adxMin})` } };
+  // ADX: peringatan jika tren lemah, tidak lagi hard block
+  const adxWarning = ltfAdx < cfg.adxMin;
 
   // CLIMAX phase block: trend-following setups di fase exhaustion cenderung gagal
   const isClimax = ltfAdx > 35 && atrPct > 3;
@@ -356,41 +372,41 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
     if (htfBias === 'BEARISH') shortScore -= 3;
   }
 
-  // Trend alignment: hard block hanya jika LTF aktif berlawanan (RANGING diizinkan)
+  // Reversal path: bypass trend alignment jika ada sinyal reversal kuat (Sweep atau Divergence)
+  const longReversalValid  = (ltfSweep === 'BULLISH_SWEEP' || ltfDiv === 'BULLISH_DIVERGENCE') && longScore >= cfg.minConfluence;
+  const shortReversalValid = (ltfSweep === 'BEARISH_SWEEP' || ltfDiv === 'BEARISH_DIVERGENCE') && shortScore >= cfg.minConfluence;
+
+  // Trend alignment
   const longTrendOk  = htfBias !== 'BEARISH' && ltfStruct.trend !== 'DOWNTREND';
   const shortTrendOk = htfBias !== 'BULLISH' && ltfStruct.trend !== 'UPTREND';
-  // Jika LTF RANGING, izinkan kedua arah (pasar konsolidasi bisa breakout keduanya)
-  const ltfRanging = ltfStruct.trend === 'RANGING';
-  const longAllowed  = ltfRanging || longTrendOk;
-  const shortAllowed = ltfRanging || shortTrendOk;
+  const ltfRanging   = ltfStruct.trend === 'RANGING';
+  const longAllowed  = ltfRanging || longTrendOk  || longReversalValid;
+  const shortAllowed = ltfRanging || shortTrendOk || shortReversalValid;
 
   let signal = null;
 
   if (longScore >= cfg.minConfluence && longScore >= shortScore + cfg.minScoreGap && longAllowed) {
+    const isReversal      = !longTrendOk && !ltfRanging && longReversalValid;
     const isLongConfirmed = (execBos === 'BULLISH_BOS' || execDiv === 'BULLISH_DIVERGENCE');
 
-    const atr = ltfAtr;
-    const slRaw = calcStructureSL(price, 'LONG', ltfStruct, atr, htfStruct);
-    let sl = parseFloat(slRaw.toFixed(price > 1000 ? 0 : 4));
-    // Minimum SL distance: harus minimal 1.2x ATR dari entry untuk hindari wick sweep
+    const atr    = ltfAtr;
+    const slRaw  = calcStructureSL(price, 'LONG', ltfStruct, atr, htfStruct);
+    let sl       = parseFloat(slRaw.toFixed(price > 1000 ? 0 : 4));
     if (price - sl < atr * 1.2) sl = parseFloat((price - atr * 2.5).toFixed(price > 1000 ? 0 : 4));
-    const tp1 = parseFloat((price + atr * 3.0).toFixed(price > 1000 ? 0 : 4));
-    const tp2 = parseFloat((price + atr * 5.0).toFixed(price > 1000 ? 0 : 4));
+    // Reversal: TP lebih konservatif karena melawan tren utama
+    const tp1 = parseFloat((price + atr * (isReversal ? 2.0 : 3.0)).toFixed(price > 1000 ? 0 : 4));
+    const tp2 = parseFloat((price + atr * (isReversal ? 3.5 : 5.0)).toFixed(price > 1000 ? 0 : 4));
 
-    // Hybrid Entry Calculation
     const entryAggressive = price;
     let entryConservative = price;
-    if (nearBullOb) {
-      entryConservative = (nearBullOb.top + nearBullOb.bottom) / 2;
-    } else if (nearBullFvg) {
-      entryConservative = nearBullFvg.top;
-    }
+    if (nearBullOb)       entryConservative = (nearBullOb.top + nearBullOb.bottom) / 2;
+    else if (nearBullFvg) entryConservative = nearBullFvg.top;
     entryConservative = parseFloat(entryConservative.toFixed(price > 1000 ? 0 : 4));
 
-    const riskAgg = entryAggressive - sl;
-    const rrAgg = parseFloat(((tp1 - entryAggressive) / riskAgg).toFixed(2));
+    const riskAgg  = entryAggressive - sl;
+    const rrAgg    = parseFloat(((tp1 - entryAggressive) / riskAgg).toFixed(2));
     const riskCons = entryConservative - sl;
-    const rrCons = parseFloat(((tp1 - entryConservative) / riskCons).toFixed(2));
+    const rrCons   = parseFloat(((tp1 - entryConservative) / riskCons).toFixed(2));
 
     const execConfirmLabel = isLongConfirmed
       ? `m15 Confirmation: ${execBos === 'BULLISH_BOS' ? 'BOS' : 'Divergence'} ✅`
@@ -412,33 +428,31 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
         liquiditySweep: ltfSweep, marketPhase, riskSuggestion,
         sessionInfo, adx: ltfAdx,
         invalidationLevel: sl,
+        isReversal, adxWarning,
       };
     }
   } else if (shortScore >= cfg.minConfluence && shortScore >= longScore + cfg.minScoreGap && shortAllowed) {
+    const isReversal       = !shortTrendOk && !ltfRanging && shortReversalValid;
     const isShortConfirmed = (execBos === 'BEARISH_BOS' || execDiv === 'BEARISH_DIVERGENCE');
 
-    const atr = ltfAtr;
+    const atr        = ltfAtr;
     const slRawShort = calcStructureSL(price, 'SHORT', ltfStruct, atr, htfStruct);
-    let slShort = parseFloat(slRawShort.toFixed(price > 1000 ? 0 : 4));
-    // Minimum SL distance: harus minimal 1.2x ATR dari entry
+    let slShort      = parseFloat(slRawShort.toFixed(price > 1000 ? 0 : 4));
     if (slShort - price < atr * 1.2) slShort = parseFloat((price + atr * 2.5).toFixed(price > 1000 ? 0 : 4));
-    const tp1 = parseFloat((price - atr * 3.0).toFixed(price > 1000 ? 0 : 4));
-    const tp2 = parseFloat((price - atr * 5.0).toFixed(price > 1000 ? 0 : 4));
+    // Reversal: TP lebih konservatif karena melawan tren utama
+    const tp1 = parseFloat((price - atr * (isReversal ? 2.0 : 3.0)).toFixed(price > 1000 ? 0 : 4));
+    const tp2 = parseFloat((price - atr * (isReversal ? 3.5 : 5.0)).toFixed(price > 1000 ? 0 : 4));
 
-    // Hybrid Entry Calculation
     const entryAggressive = price;
     let entryConservative = price;
-    if (nearBearOb) {
-      entryConservative = (nearBearOb.top + nearBearOb.bottom) / 2;
-    } else if (nearBearFvg) {
-      entryConservative = nearBearFvg.bottom;
-    }
+    if (nearBearOb)       entryConservative = (nearBearOb.top + nearBearOb.bottom) / 2;
+    else if (nearBearFvg) entryConservative = nearBearFvg.bottom;
     entryConservative = parseFloat(entryConservative.toFixed(price > 1000 ? 0 : 4));
 
-    const riskAgg = slShort - entryAggressive;
-    const rrAgg = parseFloat(((entryAggressive - tp1) / riskAgg).toFixed(2));
+    const riskAgg  = slShort - entryAggressive;
+    const rrAgg    = parseFloat(((entryAggressive - tp1) / riskAgg).toFixed(2));
     const riskCons = slShort - entryConservative;
-    const rrCons = parseFloat(((entryConservative - tp1) / riskCons).toFixed(2));
+    const rrCons   = parseFloat(((entryConservative - tp1) / riskCons).toFixed(2));
 
     const execConfirmLabel = isShortConfirmed
       ? `m15 Confirmation: ${execBos === 'BEARISH_BOS' ? 'BOS' : 'Divergence'} ✅`
@@ -460,6 +474,7 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
         liquiditySweep: ltfSweep, marketPhase, riskSuggestion,
         sessionInfo, adx: ltfAdx,
         invalidationLevel: slShort,
+        isReversal, adxWarning,
       };
     }
   }
@@ -469,9 +484,9 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
     if (Math.max(longScore, shortScore) < cfg.minConfluence) {
       blockedBy = `Score kurang — Long: ${longScore}, Short: ${shortScore} (butuh min ${cfg.minConfluence})`;
     } else if (longScore >= cfg.minConfluence && !longAllowed) {
-      blockedBy = `Long score cukup (${longScore}) tapi arah terblokir — HTF: ${htfBias}, LTF: ${ltfStruct.trend}`;
+      blockedBy = `Long score cukup (${longScore}) tapi tidak memenuhi reversal path — HTF: ${htfBias}, LTF: ${ltfStruct.trend}`;
     } else if (shortScore >= cfg.minConfluence && !shortAllowed) {
-      blockedBy = `Short score cukup (${shortScore}) tapi arah terblokir — HTF: ${htfBias}, LTF: ${ltfStruct.trend}`;
+      blockedBy = `Short score cukup (${shortScore}) tapi tidak memenuhi reversal path — HTF: ${htfBias}, LTF: ${ltfStruct.trend}`;
     } else {
       blockedBy = `RR tidak cukup (min ${cfg.minRR}) atau SL/TP tidak valid`;
     }
