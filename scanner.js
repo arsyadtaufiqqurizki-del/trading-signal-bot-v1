@@ -9,10 +9,10 @@ const {
 const { fmt } = require('./utils');
 
 const TIER_CONFIG = {
-  1: { minConfluence: 6, adxMin: 15, minRR: 2.0, minScoreGap: 1 },
-  2: { minConfluence: 6, adxMin: 15, minRR: 2.0, minScoreGap: 1 },
-  3: { minConfluence: 6, adxMin: 15, minRR: 2.0, minScoreGap: 1 },
-  4: { minConfluence: 5, adxMin: 13, minRR: 1.8, minScoreGap: 1 },
+  1: { minConfluence: 5, adxMin: 12, minRR: 1.8, minScoreGap: 1 },
+  2: { minConfluence: 5, adxMin: 12, minRR: 1.8, minScoreGap: 1 },
+  3: { minConfluence: 5, adxMin: 12, minRR: 1.8, minScoreGap: 1 },
+  4: { minConfluence: 5, adxMin: 12, minRR: 1.8, minScoreGap: 1 },
 };
 
 const PAIRS = [
@@ -253,9 +253,9 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
   if (htfBias === 'BULLISH') { longScore += 3; longFactors.push('HTF Bullish Bias 🚀'); }
   if (htfBias === 'BEARISH') { shortScore += 3; shortFactors.push('HTF Bearish Bias 📉'); }
 
-  // 1b. HTF RSI extreme filter — penalti jika 4H RSI sudah overbought/oversold
-  if (curHtfRsi > 70) { longScore  -= 2; if (curHtfRsi > 75) longScore  -= 1; }
-  if (curHtfRsi < 30) { shortScore -= 2; if (curHtfRsi < 25) shortScore -= 1; }
+  // 1b. HTF RSI extreme filter — penalti hanya di zona sangat ekstrim
+  if (curHtfRsi > 80) { longScore  -= 1; }
+  if (curHtfRsi < 20) { shortScore -= 1; }
 
   // 2. EMA alignment LTF (Medium Weight)
   if (price > curLtfE50 && curLtfE50 > curLtfE200) { longScore += 2; longFactors.push('LTF Bullish EMA Alignment ✅'); }
@@ -348,7 +348,6 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
 
   // ADX gate: tier-specific minimum trend strength
   if (ltfAdx < cfg.adxMin) return null;
-  if (ltfAdx < cfg.adxMin + 5) { longScore -= 1; shortScore -= 1; }
 
   // CLIMAX phase block: trend-following setups di fase exhaustion cenderung gagal
   const isClimax = ltfAdx > 35 && atrPct > 3;
