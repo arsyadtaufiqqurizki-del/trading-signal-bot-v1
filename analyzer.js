@@ -193,12 +193,16 @@ async function runAnalysisPair(bot, chatId, keyword) {
 
   try {
     const { btcTrend1h, btcTrend4h } = await fetchBtcTrends();
-    const signal = await analyzeAsset(pairConfig, btcTrend1h, btcTrend4h);
+    const { signal, debug } = await analyzeAsset(pairConfig, btcTrend1h, btcTrend4h);
 
     if (!signal) {
+      const d = debug || {};
+      const diagLine = d.blockedBy
+        ? `\n\n🔍 <b>Diagnosis:</b>\n• ADX 1H: <b>${d.adx != null ? d.adx.toFixed(1) : 'N/A'}</b>\n• Score Long: <b>${d.longScore ?? 'N/A'}</b> | Short: <b>${d.shortScore ?? 'N/A'}</b>\n• HTF Bias: <b>${d.htfBias ?? 'N/A'}</b> | LTF Trend: <b>${d.ltfTrend ?? 'N/A'}</b>\n• ❌ <i>${d.blockedBy}</i>`
+        : '';
       await bot.sendMessage(
         chatId,
-        `📉 <b>No Setup — ${pairConfig.name}</b>\n\nTidak ada setup valid saat ini. Kemungkinan:\n• Market sedang ranging / ADX terlalu rendah\n• Confluence tidak cukup terpenuhi\n• Di luar sesi optimal (Tier 4)\n\nCoba lagi nanti atau gunakan /high untuk scan semua pair.`,
+        `📉 <b>No Setup — ${pairConfig.name}</b>${diagLine}\n\nCoba lagi nanti atau gunakan /high untuk scan semua pair.`,
         { parse_mode: 'HTML' }
       );
       return;

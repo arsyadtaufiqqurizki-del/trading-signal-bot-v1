@@ -149,7 +149,7 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
     getKlines(pair.symbol, pair.exec, 200),
   ]);
 
-  if (!htfCandles.length || !ltfCandles.length || !execCandles.length) return null;
+  if (!htfCandles.length || !ltfCandles.length || !execCandles.length) return { signal: null, debug: { blockedBy: 'Data candle tidak tersedia' } };
 
   const htfCloses = htfCandles.map(c => c.close);
   const ltfCloses = ltfCandles.map(c => c.close);
@@ -347,7 +347,7 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
   const cfg = TIER_CONFIG[pair.tier] || TIER_CONFIG[1];
 
   // ADX gate: tier-specific minimum trend strength
-  if (ltfAdx < cfg.adxMin) return null;
+  if (ltfAdx < cfg.adxMin) return { signal: null, debug: { adx: ltfAdx, htfBias, ltfTrend: ltfStruct.trend, longScore, shortScore, blockedBy: `ADX ${ltfAdx.toFixed(1)} terlalu rendah (min ${cfg.adxMin})` } };
 
   // CLIMAX phase block: trend-following setups di fase exhaustion cenderung gagal
   const isClimax = ltfAdx > 35 && atrPct > 3;
@@ -464,7 +464,20 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
     }
   }
 
-  return signal;
+  if (!signal) {
+    let blockedBy;
+    if (Math.max(longScore, shortScore) < cfg.minConfluence) {
+      blockedBy = `Score kurang — Long: ${longScore}, Short: ${shortScore} (butuh min ${cfg.minConfluence})`;
+    } else if (longScore >= cfg.minConfluence && !longAllowed) {
+      blockedBy = `Long score cukup (${longScore}) tapi arah terblokir — HTF: ${htfBias}, LTF: ${ltfStruct.trend}`;
+    } else if (shortScore >= cfg.minConfluence && !shortAllowed) {
+      blockedBy = `Short score cukup (${shortScore}) tapi arah terblokir — HTF: ${htfBias}, LTF: ${ltfStruct.trend}`;
+    } else {
+      blockedBy = `RR tidak cukup (min ${cfg.minRR}) atau SL/TP tidak valid`;
+    }
+    return { signal: null, debug: { adx: ltfAdx, longScore, shortScore, htfBias, ltfTrend: ltfStruct.trend, blockedBy } };
+  }
+  return { signal, debug: { adx: ltfAdx, longScore, shortScore, htfBias, ltfTrend: ltfStruct.trend } };
 }
 
 async function fetchBtcTrends() {
@@ -499,8 +512,8 @@ async function scanAllPairs() {
   const { btcTrend1h, btcTrend4h } = await fetchBtcTrends();
   const results = await Promise.allSettled(PAIRS.map(p => analyzeAsset(p, btcTrend1h, btcTrend4h)));
   return results
-    .filter(r => r.status === 'fulfilled' && r.value !== null)
-    .map(r => r.value)
+    .filter(r => r.status === 'fulfilled' && r.value !== null && r.value.signal !== null)
+    .map(r => r.value.signal)
     .sort((a, b) => b.confluenceScore - a.confluenceScore)
     .slice(0, 3);
 }
