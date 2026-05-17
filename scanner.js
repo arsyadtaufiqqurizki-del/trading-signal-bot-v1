@@ -9,8 +9,8 @@ const {
 const { fmt } = require('./utils');
 
 const TIER_CONFIG = {
-  1: { minConfluence: 7, adxMin: 18, minRR: 2.2, minScoreGap: 1 },
-  2: { minConfluence: 6, adxMin: 18, minRR: 2.2, minScoreGap: 1 },
+  1: { minConfluence: 6, adxMin: 15, minRR: 2.0, minScoreGap: 1 },
+  2: { minConfluence: 6, adxMin: 15, minRR: 2.0, minScoreGap: 1 },
   3: { minConfluence: 6, adxMin: 15, minRR: 2.0, minScoreGap: 1 },
   4: { minConfluence: 5, adxMin: 13, minRR: 1.8, minScoreGap: 1 },
 };
@@ -278,7 +278,7 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
     const lastLtf = ltfCandles[ltfCandles.length - 1];
     if (lastLtf.close > lastLtf.open) { longScore  += 2; longFactors.push('Bullish Volume Spike ⚡'); }
     else                               { shortScore += 2; shortFactors.push('Bearish Volume Spike ⚡'); }
-  } else {
+  } else if (pair.tier >= 3) {
     longScore  -= 1;
     shortScore -= 1;
   }
