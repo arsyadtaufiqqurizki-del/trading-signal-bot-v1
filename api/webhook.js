@@ -43,7 +43,9 @@ module.exports = async (req, res) => {
           `<b>📊 Performance Tracking:</b>\n` +
           `📝 /result — Catat hasil trade\n` +
           `📊 /stats — Lihat statistik &amp; win rate\n` +
-          `⏳ /pending — Lihat sinyal yang belum dicatat`,
+          `⏳ /pending — Lihat sinyal yang belum dicatat\n\n` +
+          `<b>ℹ️ Info:</b>\n` +
+          `📋 /list coin — Lihat daftar coin di /high &amp; /fast`,
           { parse_mode: 'HTML' }
         );
       } else if (text.startsWith('/liq')) {
@@ -128,6 +130,57 @@ module.exports = async (req, res) => {
         } else {
           const { runAnalysis } = require('../analyzer');
           await runAnalysis(bot, chatId, false);
+        }
+      } else if (text.startsWith('/list')) {
+        const args = text.trim().split(/\s+/);
+        const sub  = args[1]?.toLowerCase();
+
+        if (sub !== 'coin') {
+          await bot.sendMessage(chatId,
+            `❓ <b>Sub-command tidak valid.</b>\n\nGunakan:\n` +
+            `• <code>/list coin</code> — Lihat daftar coin di /high &amp; /fast`,
+            { parse_mode: 'HTML' }
+          );
+        } else {
+          const { PAIRS }                      = require('../scanner');
+          const { PRO_PAIRS }                  = require('../fast-scanner');
+
+          const TIER_LABEL = {
+            1: '🏆 Tier 1 — Mega Cap',
+            2: '🔵 Tier 2 — Large Cap',
+            3: '🟡 Tier 3 — Established Altcoin',
+            4: '🔴 Tier 4 — High Momentum',
+          };
+
+          function buildCoinList(pairs, hasTier) {
+            if (hasTier) {
+              const grouped = {};
+              for (const p of pairs) {
+                if (!grouped[p.tier]) grouped[p.tier] = [];
+                grouped[p.tier].push(p.name);
+              }
+              return Object.keys(grouped).sort().map(t =>
+                `${TIER_LABEL[t]}:\n` + grouped[t].map(n => `  • ${n}`).join('\n')
+              ).join('\n\n');
+            }
+            return pairs.map(p => `  • ${p.name}`).join('\n');
+          }
+
+          const highList = buildCoinList(PAIRS, true);
+          const fastList = buildCoinList(PRO_PAIRS, false);
+
+          await bot.sendMessage(chatId,
+            `📋 <b>Daftar Coin Terdaftar</b>\n\n` +
+            `━━━━━━━━━━━━━━━━━━━━\n` +
+            `🔍 <b>/high</b> — ${PAIRS.length} Coin\n` +
+            `━━━━━━━━━━━━━━━━━━━━\n` +
+            `${highList}\n\n` +
+            `━━━━━━━━━━━━━━━━━━━━\n` +
+            `⚡ <b>/fast</b> — ${PRO_PAIRS.length} Coin\n` +
+            `━━━━━━━━━━━━━━━━━━━━\n` +
+            `${fastList}`,
+            { parse_mode: 'HTML' }
+          );
         }
       } else if (text.startsWith('/trend')) {
         const args = text.trim().split(/\s+/);
