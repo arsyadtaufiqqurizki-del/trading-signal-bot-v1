@@ -393,9 +393,10 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
     const slRaw  = calcStructureSL(price, 'LONG', ltfStruct, atr, htfStruct);
     let sl       = parseFloat(slRaw.toFixed(price > 1000 ? 0 : 4));
     if (price - sl < atr * 1.2) sl = parseFloat((price - atr * 2.5).toFixed(price > 1000 ? 0 : 4));
-    // Reversal: TP lebih konservatif karena melawan tren utama
-    const tp1 = parseFloat((price + atr * (isReversal ? 2.0 : 3.0)).toFixed(price > 1000 ? 0 : 4));
-    const tp2 = parseFloat((price + atr * (isReversal ? 3.5 : 5.0)).toFixed(price > 1000 ? 0 : 4));
+    // TP berbasis actual risk agar RR selalu proporsional dengan SL yang dipakai
+    const riskForTp = price - sl;
+    const tp1 = parseFloat((price + riskForTp * (isReversal ? 2.0 : 2.5)).toFixed(price > 1000 ? 0 : 4));
+    const tp2 = parseFloat((price + riskForTp * (isReversal ? 3.5 : 4.5)).toFixed(price > 1000 ? 0 : 4));
 
     const entryAggressive = price;
     let entryConservative = price;
@@ -439,9 +440,10 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
     const slRawShort = calcStructureSL(price, 'SHORT', ltfStruct, atr, htfStruct);
     let slShort      = parseFloat(slRawShort.toFixed(price > 1000 ? 0 : 4));
     if (slShort - price < atr * 1.2) slShort = parseFloat((price + atr * 2.5).toFixed(price > 1000 ? 0 : 4));
-    // Reversal: TP lebih konservatif karena melawan tren utama
-    const tp1 = parseFloat((price - atr * (isReversal ? 2.0 : 3.0)).toFixed(price > 1000 ? 0 : 4));
-    const tp2 = parseFloat((price - atr * (isReversal ? 3.5 : 5.0)).toFixed(price > 1000 ? 0 : 4));
+    // TP berbasis actual risk agar RR selalu proporsional dengan SL yang dipakai
+    const riskForTpShort = slShort - price;
+    const tp1 = parseFloat((price - riskForTpShort * (isReversal ? 2.0 : 2.5)).toFixed(price > 1000 ? 0 : 4));
+    const tp2 = parseFloat((price - riskForTpShort * (isReversal ? 3.5 : 4.5)).toFixed(price > 1000 ? 0 : 4));
 
     const entryAggressive = price;
     let entryConservative = price;
