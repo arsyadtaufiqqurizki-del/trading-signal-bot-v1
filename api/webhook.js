@@ -24,6 +24,7 @@ module.exports = async (req, res) => {
       if (text.startsWith('/start')) {
         await bot.sendMessage(chatId,
           `Halo! Saya adalah <b>AI Trading Assistant</b> Anda.\n\nGunakan perintah berikut:\n\n` +
+          `🔭 /outlook — <b>Market outlook 7-day: bias score, skenario &amp; kalender event</b>\n` +
           `⚡ /fast — <b>Sinyal instan sekarang</b>\n` +
           `🔍 /high — Scanning high-probability setup\n` +
           `📐 /quant — <b>Quant analysis: momentum screener &amp; stat report</b>\n` +
@@ -34,6 +35,9 @@ module.exports = async (req, res) => {
           `🔐 /crypto — <b>Dampak berita ekonomi ke market</b>\n` +
           `📰 /news — Berita market &amp; crypto terbaru\n` +
           `📈 /trend — <b>Analisis Tren Sosmed</b>\n\n` +
+          `<b>🔭 Outlook Sub-commands:</b>\n` +
+          `🌐 /outlook macro — Kalender ekonomi &amp; risk minggu ini\n` +
+          `📐 /outlook scenario — 3 skenario Bull/Base/Bear detail\n\n` +
           `<b>🚨 Real-time Alerts:</b>\n` +
           `🚨 /crypto alert NFP BTC — Monitor event dampak\n` +
           `⚙️ /crypto auto — Auto-monitor upcoming events (next 2h)\n` +
@@ -48,6 +52,29 @@ module.exports = async (req, res) => {
           `📋 /list coin — Lihat daftar coin di /high &amp; /fast`,
           { parse_mode: 'HTML' }
         );
+      } else if (text.startsWith('/outlook')) {
+        const args = text.trim().split(/\s+/);
+        const sub  = args[1]?.toLowerCase();
+        const validSubs = ['macro', 'scenario'];
+
+        if (sub && !validSubs.includes(sub)) {
+          await bot.sendMessage(chatId,
+            `❓ <b>Sub-command tidak valid.</b>\n\nGunakan:\n` +
+            `• <code>/outlook</code> — Market outlook lengkap (Bias Score + Skenario + Event)\n` +
+            `• <code>/outlook macro</code> — Kalender ekonomi &amp; risk minggu ini\n` +
+            `• <code>/outlook scenario</code> — 3 skenario Bull/Base/Bear detail`,
+            { parse_mode: 'HTML' }
+          );
+        } else if (sub === 'macro') {
+          const { runOutlookMacro } = require('../outlook');
+          await runOutlookMacro(bot, chatId);
+        } else if (sub === 'scenario') {
+          const { runOutlookScenario } = require('../outlook');
+          await runOutlookScenario(bot, chatId);
+        } else {
+          const { runOutlook } = require('../outlook');
+          await runOutlook(bot, chatId);
+        }
       } else if (text.startsWith('/liq')) {
         const args    = text.trim().split(/\s+/);
         const sub     = args[1]?.toLowerCase();
