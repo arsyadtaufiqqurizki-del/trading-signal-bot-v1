@@ -211,13 +211,6 @@ async function getNewsData() {
             const allGlobalItems = globalNews.value.flatMap(r => r.items).slice(0, 10);
             globalHeadlinesForAI = allGlobalItems.map(i => i.title);
 
-            const lowerHeadlines = allGlobalItems.map(i => i.title).join('\n').toLowerCase();
-            let riskMode = 'Netral ⚪', riskDesc = 'Pasar menunggu katalis dominan.';
-            if (lowerHeadlines.includes('inflation') || lowerHeadlines.includes('cpi')) riskDesc = 'Inflasi masih menjadi perhatian utama bank sentral.';
-            if (lowerHeadlines.includes('war') || lowerHeadlines.includes('conflict')) { riskMode = 'Risk-Off 🔴'; riskDesc = 'Ketegangan geopolitik meningkatkan ketidakpastian.'; }
-            lines.push(`⚡ Mode Pasar: <b>${riskMode}</b>`);
-            lines.push(`💬 <i>${riskDesc}</i>`);
-
             lines.push(`\n<b>Top Global Headlines:</b>`);
             allGlobalItems.slice(0, 3).forEach((item, i) => {
                 lines.push(`\n${i + 1}. <b>${item.title.trim()}</b>`);
