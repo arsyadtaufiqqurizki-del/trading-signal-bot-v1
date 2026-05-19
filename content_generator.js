@@ -81,7 +81,12 @@ class ContentGenerator {
           }
         );
 
-        const text = response.data.choices[0].message.content;
+        const text = response.data.choices[0]?.message?.content;
+        if (!text || !text.trim()) {
+          console.log(`[ContentGenerator] Model ${modelName} returned empty content, skipping...`);
+          lastError = 'empty response';
+          continue;
+        }
         return { text, model: modelName };
 
       } catch (error) {
