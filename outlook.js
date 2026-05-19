@@ -10,78 +10,104 @@ const FAPI  = 'https://fapi.binance.com/fapi/v1';
 const FDATA = 'https://fapi.binance.com/futures/data';
 const REQ   = { timeout: 10000 };
 
+// ─── In-memory Cache ─────────────────────────────────────────────────────────
+
+const _store = new Map();
+
+async function cached(key, ttlMs, fn) {
+  const hit = _store.get(key);
+  if (hit && Date.now() < hit.exp) return hit.val;
+  if (hit) _store.delete(key);
+  const result = await fn();
+  // don't cache null/undefined — let the next call retry on API failure
+  if (result != null) _store.set(key, { val: result, exp: Date.now() + ttlMs });
+  return result;
+}
+
 // ─── Data Fetchers ────────────────────────────────────────────────────────────
 
-async function fetchFearGreed() {
-  try {
-    const { data } = await axios.get('https://api.alternative.me/fng/?limit=2', REQ);
-    const [curr, prev] = data.data;
-    return { value: +curr.value, label: curr.value_classification, prevValue: +prev.value };
-  } catch { return null; }
+function fetchFearGreed() {
+  return cached('outlook_fg', 10 * 60_000, async () => {
+    try {
+      const { data } = await axios.get('https://api.alternative.me/fng/?limit=2', REQ);
+      const [curr, prev] = data.data;
+      return { value: +curr.value, label: curr.value_classification, prevValue: +prev.value };
+    } catch { return null; }
+  });
 }
 
-async function fetchGlobal() {
-  try {
-    const { data } = await axios.get('https://api.coingecko.com/api/v3/global', REQ);
-    const d = data.data;
-    return {
-      totalMcap: d.total_market_cap.usd,
-      btcDom: d.market_cap_percentage.btc,
-      ethDom: d.market_cap_percentage.eth,
-      stableDom: (d.market_cap_percentage.usdt || 0) + (d.market_cap_percentage.usdc || 0),
-      mcapChange24h: d.market_cap_change_percentage_24h_usd
-    };
-  } catch { return null; }
+function fetchGlobal() {
+  return cached('outlook_global', 5 * 60_000, async () => {
+    try {
+      const { data } = await axios.get('https://api.coingecko.com/api/v3/global', REQ);
+      const d = data.data;
+      return {
+        totalMcap: d.total_market_cap.usd,
+        btcDom: d.market_cap_percentage.btc,
+        ethDom: d.market_cap_percentage.eth,
+        stableDom: (d.market_cap_percentage.usdt || 0) + (d.market_cap_percentage.usdc || 0),
+        mcapChange24h: d.market_cap_change_percentage_24h_usd
+      };
+    } catch { return null; }
+  });
 }
 
-async function fetchBtcData() {
-  try {
-    const { data } = await axios.get(
-      'https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true&include_7d_change=true',
-      REQ
-    );
-    const p = data.bitcoin;
-    return { price: p.usd, change24h: p.usd_24h_change, change7d: p.usd_7d_change || null };
-  } catch { return null; }
+function fetchBtcData() {
+  return cached('outlook_btc', 3 * 60_000, async () => {
+    try {
+      const { data } = await axios.get(
+        'https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true&include_7d_change=true',
+        REQ
+      );
+      const p = data.bitcoin;
+      return { price: p.usd, change24h: p.usd_24h_change, change7d: p.usd_7d_change || null };
+    } catch { return null; }
+  });
 }
 
-async function fetchBtcLSR() {
-  try {
-    const { data } = await axios.get(`${FDATA}/globalLongShortAccountRatio`, {
-      params: { symbol: 'BTCUSDT', period: '1h', limit: 1 }, ...REQ
-    });
-    if (!data?.[0]) return null;
-    return {
-      longPct:  +data[0].longAccount  * 100,
-      shortPct: +data[0].shortAccount * 100,
-      ratio:    +data[0].longShortRatio
-    };
-  } catch { return null; }
+function fetchBtcLSR() {
+  return cached('outlook_btc_lsr', 3 * 60_000, async () => {
+    try {
+      const { data } = await axios.get(`${FDATA}/globalLongShortAccountRatio`, {
+        params: { symbol: 'BTCUSDT', period: '1h', limit: 1 }, ...REQ
+      });
+      if (!data?.[0]) return null;
+      return {
+        longPct:  +data[0].longAccount  * 100,
+        shortPct: +data[0].shortAccount * 100,
+        ratio:    +data[0].longShortRatio
+      };
+    } catch { return null; }
+  });
 }
 
-async function fetchBtcOI() {
-  try {
-    const { data } = await axios.get(`${FDATA}/openInterestHist`, {
-      params: { symbol: 'BTCUSDT', period: '1h', limit: 2 }, ...REQ
-    });
-    if (!data || data.length < 2) return null;
-    const curr = data[data.length - 1];
-    const prev = data[data.length - 2];
-    const change = ((+curr.sumOpenInterestValue - +prev.sumOpenInterestValue) / +prev.sumOpenInterestValue) * 100;
-    return { oiValue: +curr.sumOpenInterestValue, oiChange: change };
-  } catch { return null; }
+function fetchBtcOI() {
+  return cached('outlook_btc_oi', 3 * 60_000, async () => {
+    try {
+      const { data } = await axios.get(`${FDATA}/openInterestHist`, {
+        params: { symbol: 'BTCUSDT', period: '1h', limit: 2 }, ...REQ
+      });
+      if (!data || data.length < 2) return null;
+      const curr = data[data.length - 1];
+      const prev = data[data.length - 2];
+      const change = ((+curr.sumOpenInterestValue - +prev.sumOpenInterestValue) / +prev.sumOpenInterestValue) * 100;
+      return { oiValue: +curr.sumOpenInterestValue, oiChange: change };
+    } catch { return null; }
+  });
 }
 
-async function fetchBtcFunding() {
-  try {
-    const { data } = await axios.get(`${FAPI}/fundingRate`, {
-      params: { symbol: 'BTCUSDT', limit: 1 }, ...REQ
-    });
-    return data?.[0] ? parseFloat(data[0].fundingRate) * 100 : null;
-  } catch { return null; }
+function fetchBtcFunding() {
+  return cached('outlook_btc_funding', 5 * 60_000, async () => {
+    try {
+      const { data } = await axios.get(`${FAPI}/fundingRate`, {
+        params: { symbol: 'BTCUSDT', limit: 1 }, ...REQ
+      });
+      return data?.[0] ? parseFloat(data[0].fundingRate) * 100 : null;
+    } catch { return null; }
+  });
 }
 
-async function fetchPolyScore() {
+function fetchPolyScore() {
   const RULES = [
     { pattern: /bitcoin.*(\$[\d,]+k?|all.time high|ath)/i,           direction: 'bull', weight: 1.5 },
     { pattern: /btc.*(\$[\d,]+k?|all.time high|ath)/i,               direction: 'bull', weight: 1.5 },
@@ -100,35 +126,40 @@ async function fetchPolyScore() {
     { pattern: /crypto.*crash|crypto.*collapse/i,                    direction: 'bear', weight: 1.5 },
   ];
 
-  try {
-    const { data } = await axios.get('https://gamma-api.polymarket.com/markets', {
-      params: { limit: 100, active: true, closed: false }, timeout: 12000
-    });
-    if (!Array.isArray(data)) return null;
+  return cached('outlook_poly', 10 * 60_000, async () => {
+    try {
+      const { data } = await axios.get('https://gamma-api.polymarket.com/markets', {
+        params: { limit: 100, active: true, closed: false }, timeout: 12000
+      });
+      if (!Array.isArray(data)) return null;
 
-    let totalWeight = 0, weightedScore = 0;
-    for (const market of data) {
-      if (!market.question || !market.outcomePrices) continue;
-      for (const rule of RULES) {
-        if (!rule.pattern.test(market.question)) continue;
-        const prices = typeof market.outcomePrices === 'string'
-          ? JSON.parse(market.outcomePrices) : market.outcomePrices;
-        const yesProb = prices?.[0] ? parseFloat(prices[0]) : null;
-        if (yesProb === null) break;
-        weightedScore += (rule.direction === 'bull' ? yesProb : -yesProb) * rule.weight;
-        totalWeight   += rule.weight;
-        break;
+      let totalWeight = 0, weightedScore = 0;
+      for (const market of data) {
+        if (!market.question || !market.outcomePrices) continue;
+        for (const rule of RULES) {
+          if (!rule.pattern.test(market.question)) continue;
+          const prices = typeof market.outcomePrices === 'string'
+            ? JSON.parse(market.outcomePrices) : market.outcomePrices;
+          const yesProb = prices?.[0] ? parseFloat(prices[0]) : null;
+          if (yesProb === null) break;
+          weightedScore += (rule.direction === 'bull' ? yesProb : -yesProb) * rule.weight;
+          totalWeight   += rule.weight;
+          break;
+        }
       }
-    }
-    return totalWeight > 0 ? +(weightedScore / totalWeight).toFixed(3) : null;
-  } catch { return null; }
+      return totalWeight > 0 ? +(weightedScore / totalWeight).toFixed(3) : null;
+    } catch { return null; }
+  });
 }
 
-async function fetchUpcomingEvents() {
-  try {
-    const { getUpcomingEvents } = require('./economic-calendar');
-    return await getUpcomingEvents(168); // 7 days
-  } catch { return []; }
+function fetchUpcomingEvents() {
+  return cached('outlook_events', 30 * 60_000, async () => {
+    try {
+      const { getUpcomingEvents } = require('./economic-calendar');
+      const events = await getUpcomingEvents(168); // 7 days
+      return events.length > 0 ? events : [];
+    } catch { return []; }
+  });
 }
 
 // ─── Composite Bias Score (-10 to +10) ───────────────────────────────────────
@@ -542,29 +573,33 @@ function resolvePairSymbol(keyword) {
     : { symbol: kw + 'USDT', name: kw + '/USDT', tier: null };
 }
 
-async function fetchPairLSR(symbol) {
-  try {
-    const { data } = await axios.get(`${FDATA}/globalLongShortAccountRatio`, {
-      params: { symbol: symbol.toUpperCase(), period: '1h', limit: 1 }, ...REQ
-    });
-    if (!data?.[0]) return null;
-    return { longPct: +data[0].longAccount * 100, shortPct: +data[0].shortAccount * 100, ratio: +data[0].longShortRatio };
-  } catch { return null; }
+function fetchPairLSR(symbol) {
+  return cached(`outlook_lsr_${symbol}`, 3 * 60_000, async () => {
+    try {
+      const { data } = await axios.get(`${FDATA}/globalLongShortAccountRatio`, {
+        params: { symbol: symbol.toUpperCase(), period: '1h', limit: 1 }, ...REQ
+      });
+      if (!data?.[0]) return null;
+      return { longPct: +data[0].longAccount * 100, shortPct: +data[0].shortAccount * 100, ratio: +data[0].longShortRatio };
+    } catch { return null; }
+  });
 }
 
-async function fetchPairOIChange(symbol) {
-  try {
-    const { data } = await axios.get(`${FDATA}/openInterestHist`, {
-      params: { symbol: symbol.toUpperCase(), period: '1h', limit: 2 }, ...REQ
-    });
-    if (!data || data.length < 2) return null;
-    const curr = data[data.length - 1];
-    const prev = data[data.length - 2];
-    return {
-      oiValue:  +curr.sumOpenInterestValue,
-      oiChange: ((+curr.sumOpenInterestValue - +prev.sumOpenInterestValue) / +prev.sumOpenInterestValue) * 100
-    };
-  } catch { return null; }
+function fetchPairOIChange(symbol) {
+  return cached(`outlook_oi_${symbol}`, 3 * 60_000, async () => {
+    try {
+      const { data } = await axios.get(`${FDATA}/openInterestHist`, {
+        params: { symbol: symbol.toUpperCase(), period: '1h', limit: 2 }, ...REQ
+      });
+      if (!data || data.length < 2) return null;
+      const curr = data[data.length - 1];
+      const prev = data[data.length - 2];
+      return {
+        oiValue:  +curr.sumOpenInterestValue,
+        oiChange: ((+curr.sumOpenInterestValue - +prev.sumOpenInterestValue) / +prev.sumOpenInterestValue) * 100
+      };
+    } catch { return null; }
+  });
 }
 
 // ─── Pair Bias Score ──────────────────────────────────────────────────────────
@@ -820,13 +855,13 @@ async function runOutlookPair(bot, chatId, keyword) {
     const { calcEMA, calcRSI, calcADX, detectStructure, detectBOS, findKeyLevels } = require('./indicators');
 
     const [htfCandles, ltfCandles, execCandles, btcHtfCandles, btcLtfCandles, ticker, funding, pairLsr, pairOi] = await Promise.all([
-      getKlines(symbol,    '4h',  200),
-      getKlines(symbol,    '1h',  200),
-      getKlines(symbol,    '15m', 100),
-      getKlines('BTCUSDT', '4h',  100),
-      getKlines('BTCUSDT', '1h',  100),
-      getTicker(symbol),
-      getFundingRate(symbol),
+      cached(`outlook_klines_${symbol}_4h`,   10 * 60_000, () => getKlines(symbol,    '4h',  200)),
+      cached(`outlook_klines_${symbol}_1h`,    3 * 60_000, () => getKlines(symbol,    '1h',  200)),
+      cached(`outlook_klines_${symbol}_15m`,   2 * 60_000, () => getKlines(symbol,    '15m', 100)),
+      cached('outlook_klines_BTCUSDT_4h',     10 * 60_000, () => getKlines('BTCUSDT', '4h',  100)),
+      cached('outlook_klines_BTCUSDT_1h',      3 * 60_000, () => getKlines('BTCUSDT', '1h',  100)),
+      cached(`outlook_ticker_${symbol}`,        1 * 60_000, () => getTicker(symbol)),
+      cached(`outlook_funding_${symbol}`,       5 * 60_000, () => getFundingRate(symbol)),
       fetchPairLSR(symbol),
       fetchPairOIChange(symbol)
     ]);
