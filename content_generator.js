@@ -26,10 +26,10 @@ class ContentGenerator {
 
     // Try multiple stable models as fallback, prioritizing llama-3-8b-instruct
     const modelsToTry = [
-      'minimax/minimax-m2.5:free',
       'openai/gpt-oss-120b:free',
-      'nousresearch/hermes-3-llama-3.1-405b:free', 
-      'google/gemma-4-31b-it'
+      'minimax/minimax-m2.5:free',
+      'google/gemma-4-31b-it',
+      'nousresearch/hermes-3-llama-3.1-405b:free'
     ];
     let lastError = null;
 
