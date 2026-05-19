@@ -1,10 +1,6 @@
 const axios = require('axios');
 const Parser = require('rss-parser');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
 const parser = new Parser({ timeout: 10000 });
-
-// Initialize Gemini AI
-const genAI = process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) : null;
 
 // ─── HELPER ──────────────────────────────────────────────────────────────────
 function fmt(num, decimals = 2) {
@@ -29,23 +25,60 @@ function changeSign(change) {
     return (change >= 0 ? '+' : '') + fmt(change) + '%';
 }
 
-async function summarizeNewsWithAI(headlines) {
-    if (!genAI) return null;
-    try {
-        const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-        const prompt = `Analisis headline berita ekonomi global berikut dan berikan ringkasan singkat (max 3 kalimat) dalam Bahasa Indonesia tentang sentimen pasar saat ini (Bullish, Bearish, atau Neutral) dan alasan utamanya.
-        
-        Berita:
-        ${headlines.join('\n')}
-        
-        Format output: [Sentimen] - [Ringkasan]`;
-        
-        const result = await model.generateContent(prompt);
-        return result.response.text();
-    } catch (e) {
-        console.error('AI Summary Error:', e);
-        return null;
+async function generateAIMarketSummary(marketContext) {
+    const apiKey = process.env.OPENROUTER_API_KEY;
+    if (!apiKey) return null;
+
+    const modelsToTry = [
+        'minimax/minimax-m2.5:free',
+        'nousresearch/hermes-3-llama-3.1-405b:free',
+        'google/gemma-4-31b-it'
+    ];
+
+    const prompt = `Kamu adalah analis pasar senior. Berdasarkan data pasar berikut, buat ringkasan analisis dalam Bahasa Indonesia yang tajam, informatif, dan actionable.
+
+DATA PASAR HARI INI:
+${marketContext}
+
+Tulis analisis dengan format PERSIS seperti ini (gunakan HTML bold tag untuk judul):
+<b>Sentimen Keseluruhan:</b> [Bullish/Bearish/Neutral] — [1 kalimat alasan utama]
+
+<b>Katalis Utama:</b>
+• [Faktor 1 yang paling mempengaruhi pasar]
+• [Faktor 2]
+• [Faktor 3]
+
+<b>Perhatikan:</b> [1–2 kalimat tentang risiko atau peluang yang harus diwaspadai trader hari ini]
+
+PENTING: Jangan tambahkan teks pembuka/penutup. Langsung mulai dengan "<b>Sentimen Keseluruhan:</b>".`;
+
+    for (const model of modelsToTry) {
+        try {
+            const response = await axios.post(
+                'https://openrouter.ai/api/v1/chat/completions',
+                {
+                    model,
+                    messages: [{ role: 'user', content: prompt }],
+                    temperature: 0.4,
+                    max_tokens: 400
+                },
+                {
+                    headers: {
+                        'Authorization': `Bearer ${apiKey}`,
+                        'Content-Type': 'application/json',
+                        'HTTP-Referer': 'https://gemini-cli.vercel.app',
+                        'X-Title': 'Market Intel Bot'
+                    },
+                    timeout: 20000
+                }
+            );
+            const text = response.data?.choices?.[0]?.message?.content;
+            if (text) return text.trim();
+        } catch (e) {
+            console.error(`[AI Summary] Model ${model} failed:`, e.message);
+        }
     }
+    return null;
 }
 
 async function yahooQuote(ticker) {
@@ -173,23 +206,17 @@ async function getNewsData() {
 
         // --- SEKSI 5: MAKRO GLOBAL ---
         lines.push(`\n<b>🌍 KONDISI MAKRO GLOBAL</b>`);
+        let globalHeadlinesForAI = [];
         if (globalNews.status === 'fulfilled') {
             const allGlobalItems = globalNews.value.flatMap(r => r.items).slice(0, 10);
-            const headlines = allGlobalItems.map(i => i.title).join('\n');
-            
-            // AI Summary
-            const aiSummary = await summarizeNewsWithAI(allGlobalItems.map(i => i.title));
-            if (aiSummary) {
-                lines.push(`🤖 <b>AI Analysis:</b>\n<i>${aiSummary}</i>`);
-            } else {
-                // Fallback ke analisis kata kunci manual jika AI gagal
-                let riskMode = 'Netral ⚪', riskDesc = 'Pasar menunggu katalis dominan.';
-                const lowerHeadlines = headlines.toLowerCase();
-                if (lowerHeadlines.includes('inflation') || lowerHeadlines.includes('cpi')) riskDesc = 'Inflasi masih menjadi perhatian utama bank sentral.';
-                if (lowerHeadlines.includes('war') || lowerHeadlines.includes('conflict')) { riskMode = 'Risk-Off 🔴'; riskDesc = 'Ketegangan geopolitik meningkatkan ketidakpastian.'; }
-                lines.push(`⚡ Mode Pasar: <b>${riskMode}</b>`);
-                lines.push(`💬 <i>${riskDesc}</i>`);
-            }
+            globalHeadlinesForAI = allGlobalItems.map(i => i.title);
+
+            const lowerHeadlines = allGlobalItems.map(i => i.title).join('\n').toLowerCase();
+            let riskMode = 'Netral ⚪', riskDesc = 'Pasar menunggu katalis dominan.';
+            if (lowerHeadlines.includes('inflation') || lowerHeadlines.includes('cpi')) riskDesc = 'Inflasi masih menjadi perhatian utama bank sentral.';
+            if (lowerHeadlines.includes('war') || lowerHeadlines.includes('conflict')) { riskMode = 'Risk-Off 🔴'; riskDesc = 'Ketegangan geopolitik meningkatkan ketidakpastian.'; }
+            lines.push(`⚡ Mode Pasar: <b>${riskMode}</b>`);
+            lines.push(`💬 <i>${riskDesc}</i>`);
 
             lines.push(`\n<b>Top Global Headlines:</b>`);
             allGlobalItems.slice(0, 3).forEach((item, i) => {
@@ -200,6 +227,31 @@ async function getNewsData() {
             lines.push(`⚠️ Data Makro Global tidak dapat ditarik.`);
         }
         lines.push(sep);
+
+        // --- SEKSI 6: AI SUMMARY ---
+        const ihsgData  = ihsg.status === 'fulfilled' && ihsg.value;
+        const bbcaData  = bbca.status === 'fulfilled' && bbca.value;
+        const btcData   = btcResp.status === 'fulfilled' ? btcResp.value.data?.bitcoin : null;
+        const fngData   = fngResp.status === 'fulfilled' ? fngResp.value.data?.data?.[0] : null;
+        const localNews = newsResults.status === 'fulfilled'
+            ? newsResults.value.flatMap(r => r.items).slice(0, 4).map(i => i.title)
+            : [];
+
+        const marketContext = [
+            ihsgData   ? `IHSG: ${fmt(ihsgData.price)} poin (${changeSign(ihsgData.change)})`                         : 'IHSG: data tidak tersedia',
+            bbcaData   ? `BBCA: Rp${fmt(bbcaData.price, 0)} (${changeSign(bbcaData.change)})`                         : 'BBCA: data tidak tersedia',
+            btcData    ? `BTC/USD: $${fmt(btcData.usd)} (24h ${changeSign(btcData.usd_24h_change)})`                   : 'BTC: data tidak tersedia',
+            fngData    ? `Fear & Greed Index: ${fngData.value}/100 — ${fngData.value_classification}`                 : '',
+            localNews.length ? `\nBerita Lokal Utama:\n${localNews.map((h, i) => `${i+1}. ${h}`).join('\n')}`         : '',
+            globalHeadlinesForAI.length ? `\nBerita Global Utama:\n${globalHeadlinesForAI.slice(0, 5).map((h, i) => `${i+1}. ${h}`).join('\n')}` : ''
+        ].filter(Boolean).join('\n');
+
+        const aiSummary = await generateAIMarketSummary(marketContext);
+        if (aiSummary) {
+            lines.push(`\n<b>🤖 AI MARKET INTELLIGENCE</b>`);
+            lines.push(aiSummary);
+            lines.push(sep);
+        }
 
         lines.push(`\n⚠️ <i>Laporan informatif, bukan rekomendasi investasi.</i>`);
         lines.push(`🤖 <b>Market Intelligence System v2.0</b>`);
