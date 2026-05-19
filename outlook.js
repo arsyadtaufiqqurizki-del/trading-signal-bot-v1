@@ -527,6 +527,407 @@ function buildScenarioReport({ score, scenarios, btc, fg }) {
   return r;
 }
 
+// ─── Pair Outlook — Fetchers ──────────────────────────────────────────────────
+
+function resolvePairSymbol(keyword) {
+  const { PAIRS } = require('./scanner');
+  const kw = keyword.toUpperCase().replace('/USDT', '').replace(/USDT$/, '');
+  const found = PAIRS.find(p =>
+    p.name.toUpperCase().startsWith(kw + '/') ||
+    p.symbol.toUpperCase() === kw + 'USDT' ||
+    p.symbol.toUpperCase() === kw
+  );
+  return found
+    ? { symbol: found.symbol, name: found.name, tier: found.tier }
+    : { symbol: kw + 'USDT', name: kw + '/USDT', tier: null };
+}
+
+async function fetchPairLSR(symbol) {
+  try {
+    const { data } = await axios.get(`${FDATA}/globalLongShortAccountRatio`, {
+      params: { symbol: symbol.toUpperCase(), period: '1h', limit: 1 }, ...REQ
+    });
+    if (!data?.[0]) return null;
+    return { longPct: +data[0].longAccount * 100, shortPct: +data[0].shortAccount * 100, ratio: +data[0].longShortRatio };
+  } catch { return null; }
+}
+
+async function fetchPairOIChange(symbol) {
+  try {
+    const { data } = await axios.get(`${FDATA}/openInterestHist`, {
+      params: { symbol: symbol.toUpperCase(), period: '1h', limit: 2 }, ...REQ
+    });
+    if (!data || data.length < 2) return null;
+    const curr = data[data.length - 1];
+    const prev = data[data.length - 2];
+    return {
+      oiValue:  +curr.sumOpenInterestValue,
+      oiChange: ((+curr.sumOpenInterestValue - +prev.sumOpenInterestValue) / +prev.sumOpenInterestValue) * 100
+    };
+  } catch { return null; }
+}
+
+// ─── Pair Bias Score ──────────────────────────────────────────────────────────
+
+function computePairBiasScore({ htfBias, ltfStruct, ltfBos, ltfRsi, ltfAdx, execTrend, funding, lsr, change24h, btcBias4h, btcBias1h }) {
+  let score = 0;
+  const signals = [];
+
+  // BTC macro correlation (weight ±2.5)
+  if      (btcBias4h === 'BULLISH') { score += 1.5; signals.push({ icon: '🟢', label: 'BTC 4H Bullish — macro supportive', type: 'bull' }); }
+  else if (btcBias4h === 'BEARISH') { score -= 1.5; signals.push({ icon: '🔴', label: 'BTC 4H Bearish — macro headwind', type: 'bear' }); }
+
+  if      (btcBias1h === 'BULLISH') { score += 1;   signals.push({ icon: '🟢', label: 'BTC 1H Bullish — intraday momentum', type: 'bull' }); }
+  else if (btcBias1h === 'BEARISH') { score -= 1;   signals.push({ icon: '🔴', label: 'BTC 1H Bearish — intraday tekanan', type: 'bear' }); }
+
+  // 4H structure bias (weight ±2)
+  if      (htfBias === 'BULLISH') { score += 2;   signals.push({ icon: '🟢', label: '4H Struktur Bullish — trend jangka menengah naik', type: 'bull' }); }
+  else if (htfBias === 'BEARISH') { score -= 2;   signals.push({ icon: '🔴', label: '4H Struktur Bearish — trend jangka menengah turun', type: 'bear' }); }
+  else                            { score += 0;   signals.push({ icon: '🟡', label: '4H Struktur Ranging — belum ada arah jelas', type: 'neutral' }); }
+
+  // 1H trend (weight ±1.5)
+  if      (ltfStruct?.trend === 'UPTREND')   { score += 1.5; signals.push({ icon: '🟢', label: '1H UPTREND — HH &amp; HL terbentuk', type: 'bull' }); }
+  else if (ltfStruct?.trend === 'DOWNTREND') { score -= 1.5; signals.push({ icon: '🔴', label: '1H DOWNTREND — LH &amp; LL terbentuk', type: 'bear' }); }
+  else                                       { score += 0;   signals.push({ icon: '🟡', label: '1H RANGING — konsolidasi, tunggu breakout', type: 'neutral' }); }
+
+  // BOS 1H (weight ±1.5)
+  if      (ltfBos === 'BULLISH_BOS') { score += 1.5; signals.push({ icon: '🟢', label: '1H Bullish BOS — struktur break ke atas', type: 'bull' }); }
+  else if (ltfBos === 'BEARISH_BOS') { score -= 1.5; signals.push({ icon: '🔴', label: '1H Bearish BOS — struktur break ke bawah', type: 'bear' }); }
+
+  // RSI 1H (weight ±1)
+  if      (ltfRsi < 40) { score += 1;   signals.push({ icon: '🟢', label: `RSI 1H ${fmt(ltfRsi, 1)} — oversold, ruang naik tersedia`, type: 'bull' }); }
+  else if (ltfRsi > 70) { score -= 1;   signals.push({ icon: '🔴', label: `RSI 1H ${fmt(ltfRsi, 1)} — overbought, waspada koreksi`, type: 'bear' }); }
+  else                  { score += 0;   signals.push({ icon: '🟡', label: `RSI 1H ${fmt(ltfRsi, 1)} — zona netral`, type: 'neutral' }); }
+
+  // ADX 1H (weight ±0.5)
+  if      (ltfAdx > 25) { score += 0.5;  signals.push({ icon: '🟢', label: `ADX 1H ${fmt(ltfAdx, 1)} — trend kuat`, type: 'bull' }); }
+  else if (ltfAdx < 15) { score -= 0.5;  signals.push({ icon: '🟡', label: `ADX 1H ${fmt(ltfAdx, 1)} — trend lemah/ranging`, type: 'neutral' }); }
+
+  // 15m execution (weight ±0.5)
+  if      (execTrend === 'UPTREND')   { score += 0.5; signals.push({ icon: '🟢', label: '15m Uptrend — momentum eksekusi bullish', type: 'bull' }); }
+  else if (execTrend === 'DOWNTREND') { score -= 0.5; signals.push({ icon: '🔴', label: '15m Downtrend — momentum eksekusi bearish', type: 'bear' }); }
+
+  // Funding rate (weight ±1)
+  if (funding != null) {
+    if      (funding > 0.08)  { score -= 1;   signals.push({ icon: '🔴', label: `Funding ${fmt(funding, 4)}% — longs dominan, overheated`, type: 'bear' }); }
+    else if (funding > 0.03)  { score -= 0.5; signals.push({ icon: '🟠', label: `Funding ${fmt(funding, 4)}% — long-biased`, type: 'bear' }); }
+    else if (funding < -0.02) { score += 1;   signals.push({ icon: '🟢', label: `Funding ${fmt(funding, 4)}% — shorts bayar longs`, type: 'bull' }); }
+    else                      { score += 0.5; signals.push({ icon: '🟢', label: `Funding ${fmt(funding, 4)}% — sehat/netral`, type: 'bull' }); }
+  }
+
+  // LSR contrarian (weight ±1)
+  if (lsr?.ratio != null) {
+    if      (lsr.ratio > 2.2) { score -= 1;   signals.push({ icon: '🔴', label: `LSR ${fmt(lsr.ratio, 2)} — crowded long, squeeze risk`, type: 'bear' }); }
+    else if (lsr.ratio < 0.7) { score += 1;   signals.push({ icon: '🟢', label: `LSR ${fmt(lsr.ratio, 2)} — short-heavy, potensi squeeze`, type: 'bull' }); }
+    else                      { score += 0;   signals.push({ icon: '🟡', label: `LSR ${fmt(lsr.ratio, 2)} — positioning balanced`, type: 'neutral' }); }
+  }
+
+  // 24h price change (weight ±0.5)
+  if (change24h != null) {
+    if      (change24h > 5)  { score += 0.5; signals.push({ icon: '🟢', label: `24h ${pct(change24h)} — momentum harian positif`, type: 'bull' }); }
+    else if (change24h < -5) { score -= 0.5; signals.push({ icon: '🔴', label: `24h ${pct(change24h)} — tekanan jual harian`, type: 'bear' }); }
+  }
+
+  score = Math.max(-10, Math.min(10, Math.round(score * 10) / 10));
+  return {
+    score,
+    signals,
+    bullCount:    signals.filter(s => s.type === 'bull').length,
+    bearCount:    signals.filter(s => s.type === 'bear').length
+  };
+}
+
+// ─── Pair Scenarios ───────────────────────────────────────────────────────────
+
+function buildPairScenarios({ score, price }) {
+  let bullProb, baseProb, bearProb;
+  if      (score >= 6)  { bullProb = 55; baseProb = 33; bearProb = 12; }
+  else if (score >= 3)  { bullProb = 40; baseProb = 42; bearProb = 18; }
+  else if (score >= 0)  { bullProb = 28; baseProb = 45; bearProb = 27; }
+  else if (score >= -3) { bullProb = 20; baseProb = 40; bearProb = 40; }
+  else                  { bullProb = 12; baseProb = 30; bearProb = 58; }
+
+  const dec  = price >= 1000 ? 1 : price >= 1 ? 3 : 6;
+  const fmtP = (n) => price > 0
+    ? '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec })
+    : 'N/A';
+
+  return [
+    {
+      emoji: '🐂', label: 'BULL CASE', prob: bullProb,
+      target:    price > 0 ? `Rally ke ${fmtP(price * 1.15)}` : 'Breakout ke resistance baru',
+      condition: score >= 3 ? 'Momentum berlanjut, BTC support, volume naik' : 'Butuh catalyst: BTC pump atau news positif sektoral',
+      action:    'Long di support kuat, TP bertahap, SL di bawah struktur'
+    },
+    {
+      emoji: '📊', label: 'BASE CASE', prob: baseProb,
+      target:    price > 0 ? `Konsolidasi ${fmtP(price * 0.95)}–${fmtP(price * 1.05)}` : 'Ranging di level saat ini',
+      condition: 'Market menunggu direction dari BTC atau data macro berikutnya',
+      action:    'Scalp di batas range, ukuran posisi kecil'
+    },
+    {
+      emoji: '🐻', label: 'BEAR CASE', prob: bearProb,
+      target:    price > 0 ? `Koreksi ke ${fmtP(price * 0.85)}` : 'Retest support major',
+      condition: score <= -3 ? 'Macro bearish, BTC dump, atau liquidation cascade' : 'Trigger: BTC breakdown atau bad news sektoral',
+      action:    'Hindari buy, pasang SL ketat pada posisi open'
+    }
+  ];
+}
+
+// ─── Pair AI Narrative ────────────────────────────────────────────────────────
+
+async function generatePairNarrative({ pairName, score, biasLabel, price, change24h, htfBias, ltfTrend, ltfRsi, ltfAdx, lsr, funding, btcBias4h, nearResistance, nearSupport }) {
+  if (!genAI) return null;
+  try {
+    const model  = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const prompt = `Kamu adalah analis crypto senior. Tulis outlook pair ${pairName} dalam 2-3 kalimat yang tajam dan actionable dalam Bahasa Indonesia. Jangan gunakan bullet point.
+
+Data:
+- Harga: $${price?.toLocaleString('en-US') ?? 'N/A'} | 24h: ${change24h != null ? pct(change24h) : 'N/A'}
+- Bias Score: ${score > 0 ? '+' : ''}${score}/10 (${biasLabel})
+- 4H Bias: ${htfBias} | 1H Trend: ${ltfTrend}
+- RSI 1H: ${ltfRsi != null ? fmt(ltfRsi, 1) : 'N/A'} | ADX 1H: ${ltfAdx != null ? fmt(ltfAdx, 1) : 'N/A'}
+- BTC 4H: ${btcBias4h} | LSR: ${lsr ? fmt(lsr.ratio, 2) : 'N/A'}
+- Funding: ${funding != null ? fmt(funding, 4) + '%' : 'N/A'}
+- Resistance terdekat: ${nearResistance ?? 'N/A'} | Support terdekat: ${nearSupport ?? 'N/A'}
+
+Fokus: bias arah pair ini, level kritis yang perlu diperhatikan, satu advice konkret.`;
+
+    const result = await model.generateContent(prompt);
+    return result.response.text().trim();
+  } catch { return null; }
+}
+
+// ─── Pair Report Builder ──────────────────────────────────────────────────────
+
+function buildPairReport({ pairName, score, signals, scenarios, price, change24h, volume, htfBias, ltfStruct, ltfBos, ltfRsi, ltfAdx, execTrend, lsr, oi, funding, keyLevels, bullCount, bearCount, btcBias4h, narrative }) {
+  const dateStr = new Date().toLocaleString('id-ID', {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Jakarta'
+  });
+  const timeStr = new Date().toLocaleString('id-ID', {
+    hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta'
+  });
+
+  const label    = getBiasLabel(score);
+  const bar      = buildBiasBar(score);
+  const scoreStr = (score > 0 ? '+' : '') + score;
+  const dec      = price >= 1000 ? 1 : price >= 1 ? 4 : 6;
+  const fmtPrice = (n) => n != null
+    ? '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec })
+    : 'N/A';
+
+  const resistances = (keyLevels ?? []).filter(l => l.type === 'RESISTANCE' && l.price > price).sort((a, b) => a.price - b.price);
+  const supports    = (keyLevels ?? []).filter(l => l.type === 'SUPPORT'    && l.price < price).sort((a, b) => b.price - a.price);
+
+  const tvSymbol = pairName.replace('/', '');
+  const tvLink   = `https://www.tradingview.com/chart/?symbol=BINANCE:${tvSymbol}`;
+  const baseCoin = pairName.split('/')[0];
+
+  const trendIcon = (t) => t === 'UPTREND' ? '📈' : t === 'DOWNTREND' ? '📉' : '↔️';
+  const biasIcon  = (b) => b === 'BULLISH' ? '🟢' : b === 'BEARISH' ? '🔴' : '🟡';
+
+  const volStr = volume >= 1e9 ? `$${(volume / 1e9).toFixed(2)}B` : volume >= 1e6 ? `$${(volume / 1e6).toFixed(0)}M` : volume ? `$${Math.round(volume)}` : 'N/A';
+
+  let r = '';
+
+  r += `<b>🔭 OUTLOOK ${pairName}</b>\n`;
+  r += `<i>7-Day Pair View · ${dateStr} · ${timeStr} WIB</i>\n`;
+  r += `━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+
+  r += `<b>PAIR BIAS SCORE</b>\n`;
+  r += `<code>${bar}</code>  <b>${scoreStr}/10</b>\n`;
+  r += `Bias: <b>${label}</b>  |  ${bullCount} Bullish · ${bearCount} Bearish\n\n`;
+
+  r += `<b>SNAPSHOT</b>\n`;
+  r += `Harga   : <b>${fmtPrice(price)}</b>\n`;
+  r += `24h     : <b>${pct(change24h)}</b>\n`;
+  r += `Vol 24h : <b>${volStr}</b>\n\n`;
+
+  r += `<b>MULTI-TIMEFRAME ANALYSIS</b>\n`;
+  r += `4H Bias  : ${biasIcon(htfBias)} <b>${htfBias}</b>`;
+  if (btcBias4h !== 'NEUTRAL') r += `  |  BTC 4H: ${biasIcon(btcBias4h)} ${btcBias4h}`;
+  r += '\n';
+  r += `1H Trend : ${trendIcon(ltfStruct?.trend)} <b>${ltfStruct?.trend ?? 'N/A'}</b>`;
+  if (ltfBos) r += `  |  BOS: ${ltfBos === 'BULLISH_BOS' ? '🟢 BULL' : '🔴 BEAR'}`;
+  r += '\n';
+  r += `15m Exec : ${trendIcon(execTrend)} <b>${execTrend ?? 'N/A'}</b>\n`;
+  r += `RSI 1H   : <b>${ltfRsi != null ? fmt(ltfRsi, 1) : 'N/A'}</b>`;
+  if (ltfAdx != null) r += `  |  ADX 1H: <b>${fmt(ltfAdx, 1)}</b> ${ltfAdx > 25 ? '(Trending)' : ltfAdx < 15 ? '(Ranging)' : '(Transisi)'}`;
+  r += '\n\n';
+
+  if (resistances.length > 0 || supports.length > 0) {
+    r += `<b>KEY LEVELS</b>\n`;
+    resistances.slice(0, 2).forEach((lvl, i) => { r += `🔴 R${i + 1}: <b>${fmtPrice(lvl.price)}</b>\n`; });
+    supports.slice(0, 2).forEach((lvl, i)    => { r += `🟢 S${i + 1}: <b>${fmtPrice(lvl.price)}</b>\n`; });
+    r += '\n';
+  }
+
+  if (lsr || oi || funding != null) {
+    r += `<b>FUTURES SENTIMENT</b>\n`;
+    if (lsr) {
+      const lsrEmoji = lsr.ratio > 2.0 ? '⚠️' : lsr.ratio < 0.8 ? '🟢' : '⚖️';
+      r += `LSR     : ${lsrEmoji} <b>${fmt(lsr.ratio, 2)}</b>  (Long ${fmt(lsr.longPct, 1)}% / Short ${fmt(lsr.shortPct, 1)}%)\n`;
+    }
+    if (oi) {
+      const oiEmoji = oi.oiChange > 3 ? '📈' : oi.oiChange < -3 ? '📉' : '↔️';
+      r += `OI (1h) : ${oiEmoji} ${oi.oiChange > 0 ? '+' : ''}${fmt(oi.oiChange, 2)}%\n`;
+    }
+    if (funding != null) {
+      const fEmoji = funding > 0.06 ? '🔴' : funding < -0.02 ? '🟢' : '✅';
+      const fNote  = funding > 0.06 ? '← overheated' : funding < 0 ? '← shorts bayar' : '← sehat';
+      r += `Funding : ${fEmoji} <b>${fmt(funding, 4)}%</b>  ${fNote}\n`;
+    }
+    r += '\n';
+  }
+
+  r += `<b>SIGNAL CONFLUENCE</b>\n`;
+  signals.forEach(s => { r += `${s.icon} ${s.label}\n`; });
+
+  r += `\n━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+  r += `<b>3-SCENARIO (7-Day)</b>\n`;
+  for (const sc of scenarios) {
+    r += `\n${sc.emoji} <b>${sc.label} — ${sc.prob}%</b>\n`;
+    r += `   📍 ${sc.target}\n`;
+    r += `   📋 <i>${sc.condition}</i>\n`;
+    r += `   ⚡ ${sc.action}\n`;
+  }
+
+  if (narrative) {
+    r += `\n━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+    r += `<b>🤖 AI PAIR INTELLIGENCE</b>\n`;
+    r += `<i>${narrative}</i>\n`;
+  }
+
+  r += `\n━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+  r += `📊 <b><a href="${tvLink}">Chart TradingView → BINANCE:${tvSymbol}</a></b>\n`;
+  r += `<i>Sinyal teknikal: /fast ${baseCoin} · /high ${baseCoin} · Outlook global: /outlook</i>`;
+
+  return r;
+}
+
+// ─── Main Export: Pair ────────────────────────────────────────────────────────
+
+async function runOutlookPair(bot, chatId, keyword) {
+  const { symbol, name: pairName } = resolvePairSymbol(keyword);
+
+  await bot.sendMessage(chatId,
+    `🔭 <b>Outlook ${pairName}</b>\nMenganalisis multi-timeframe &amp; futures data...`,
+    { parse_mode: 'HTML' }
+  );
+
+  try {
+    const { getKlines, getTicker, getFundingRate }                   = require('./binance');
+    const { calcEMA, calcRSI, calcADX, detectStructure, detectBOS, findKeyLevels } = require('./indicators');
+
+    const [htfCandles, ltfCandles, execCandles, btcHtfCandles, btcLtfCandles, ticker, funding, pairLsr, pairOi] = await Promise.all([
+      getKlines(symbol,    '4h',  200),
+      getKlines(symbol,    '1h',  200),
+      getKlines(symbol,    '15m', 100),
+      getKlines('BTCUSDT', '4h',  100),
+      getKlines('BTCUSDT', '1h',  100),
+      getTicker(symbol),
+      getFundingRate(symbol),
+      fetchPairLSR(symbol),
+      fetchPairOIChange(symbol)
+    ]);
+
+    if (!htfCandles.length || !ltfCandles.length) {
+      await bot.sendMessage(chatId,
+        `❌ <b>Data tidak tersedia untuk ${pairName}.</b>\nPastikan pair ini tersedia di Binance Futures.`,
+        { parse_mode: 'HTML' }
+      );
+      return;
+    }
+
+    // ── Indicators ──
+    const htfCloses = htfCandles.map(c => c.close);
+    const ltfCloses = ltfCandles.map(c => c.close);
+
+    const htfEma50  = calcEMA(htfCloses, 50);
+    const htfEma200 = calcEMA(htfCloses, 200);
+    const ltfRsiArr = calcRSI(ltfCloses, 14);
+    const ltfAdxVal = calcADX(ltfCandles, 14);
+
+    const htfStruct  = detectStructure(htfCandles);
+    const ltfStruct  = detectStructure(ltfCandles);
+    const ltfBos     = detectBOS(ltfCandles, ltfStruct);
+    const execStruct = detectStructure(execCandles);
+    const keyLevels  = findKeyLevels(htfCandles, 5);
+
+    const price      = ltfCandles[ltfCandles.length - 1].close;
+    const curHtfE50  = htfEma50[htfEma50.length - 1];
+    const curHtfE200 = htfEma200[htfEma200.length - 1];
+    const ltfRsi     = ltfRsiArr[ltfRsiArr.length - 1] ?? 50;
+
+    let htfBias = 'NEUTRAL';
+    if (curHtfE50 > curHtfE200 && htfStruct.trend !== 'DOWNTREND') htfBias = 'BULLISH';
+    if (curHtfE50 < curHtfE200 && htfStruct.trend !== 'UPTREND')   htfBias = 'BEARISH';
+
+    // ── BTC correlation ──
+    const btcHtfCloses = btcHtfCandles.map(c => c.close);
+    const btcHtfE50    = calcEMA(btcHtfCloses, 50);
+    const btcHtfE200   = calcEMA(btcHtfCloses, 200);
+    const btcLtfStruct = detectStructure(btcLtfCandles);
+
+    let btcBias4h = 'NEUTRAL';
+    if (btcHtfE50[btcHtfE50.length - 1] > btcHtfE200[btcHtfE200.length - 1]) btcBias4h = 'BULLISH';
+    if (btcHtfE50[btcHtfE50.length - 1] < btcHtfE200[btcHtfE200.length - 1]) btcBias4h = 'BEARISH';
+
+    let btcBias1h = 'NEUTRAL';
+    if (btcLtfStruct.trend === 'UPTREND')   btcBias1h = 'BULLISH';
+    if (btcLtfStruct.trend === 'DOWNTREND') btcBias1h = 'BEARISH';
+
+    // ── Compute bias ──
+    const { score, signals, bullCount, bearCount } = computePairBiasScore({
+      htfBias, ltfStruct, ltfBos,
+      ltfRsi, ltfAdx: ltfAdxVal,
+      execTrend: execStruct.trend,
+      funding, lsr: pairLsr,
+      change24h: ticker.change24h,
+      btcBias4h, btcBias1h
+    });
+
+    const biasLabel = getBiasLabel(score);
+    const scenarios = buildPairScenarios({ score, price });
+
+    // Nearest R/S for narrative
+    const dec  = price >= 1000 ? 1 : price >= 1 ? 4 : 6;
+    const rFmt = (n) => '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec });
+    const nearR = keyLevels.filter(l => l.type === 'RESISTANCE' && l.price > price).sort((a, b) => a.price - b.price)[0]?.price;
+    const nearS = keyLevels.filter(l => l.type === 'SUPPORT'    && l.price < price).sort((a, b) => b.price - a.price)[0]?.price;
+
+    const narrative = await generatePairNarrative({
+      pairName, score, biasLabel, price,
+      change24h: ticker.change24h,
+      htfBias, ltfTrend: ltfStruct.trend,
+      ltfRsi, ltfAdx: ltfAdxVal,
+      lsr: pairLsr, funding, btcBias4h,
+      nearResistance: nearR ? rFmt(nearR) : null,
+      nearSupport:    nearS ? rFmt(nearS) : null
+    });
+
+    const report = buildPairReport({
+      pairName, score, signals, scenarios,
+      price, change24h: ticker.change24h, volume: ticker.volume,
+      htfBias, ltfStruct, ltfBos,
+      ltfRsi, ltfAdx: ltfAdxVal,
+      execTrend: execStruct.trend,
+      lsr: pairLsr, oi: pairOi, funding,
+      keyLevels, bullCount, bearCount,
+      btcBias4h, narrative
+    });
+
+    await bot.sendMessage(chatId, report, { parse_mode: 'HTML' });
+
+  } catch (e) {
+    console.error('[OutlookPair]', e.message);
+    await bot.sendMessage(chatId,
+      `❌ <b>Gagal menganalisis ${pairName}:</b>\n<code>${e.message}</code>`,
+      { parse_mode: 'HTML' }
+    );
+  }
+}
+
 // ─── Main Exports ─────────────────────────────────────────────────────────────
 
 async function runOutlook(bot, chatId) {
@@ -601,4 +1002,4 @@ async function runOutlookScenario(bot, chatId) {
   await bot.sendMessage(chatId, report, { parse_mode: 'HTML' });
 }
 
-module.exports = { runOutlook, runOutlookMacro, runOutlookScenario };
+module.exports = { runOutlook, runOutlookMacro, runOutlookScenario, runOutlookPair };

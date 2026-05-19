@@ -36,6 +36,7 @@ module.exports = async (req, res) => {
           `📰 /news — Berita market &amp; crypto terbaru\n` +
           `📈 /trend — <b>Analisis Tren Sosmed</b>\n\n` +
           `<b>🔭 Outlook Sub-commands:</b>\n` +
+          `🪙 /outlook BTC — Outlook spesifik per pair (BTC, ETH, SOL, dll)\n` +
           `🌐 /outlook macro — Kalender ekonomi &amp; risk minggu ini\n` +
           `📐 /outlook scenario — 3 skenario Bull/Base/Bear detail\n\n` +
           `<b>🚨 Real-time Alerts:</b>\n` +
@@ -53,24 +54,20 @@ module.exports = async (req, res) => {
           { parse_mode: 'HTML' }
         );
       } else if (text.startsWith('/outlook')) {
-        const args = text.trim().split(/\s+/);
-        const sub  = args[1]?.toLowerCase();
-        const validSubs = ['macro', 'scenario'];
+        const args     = text.trim().split(/\s+/);
+        const sub      = args[1]?.toLowerCase();
+        const keywords = ['macro', 'scenario'];
 
-        if (sub && !validSubs.includes(sub)) {
-          await bot.sendMessage(chatId,
-            `❓ <b>Sub-command tidak valid.</b>\n\nGunakan:\n` +
-            `• <code>/outlook</code> — Market outlook lengkap (Bias Score + Skenario + Event)\n` +
-            `• <code>/outlook macro</code> — Kalender ekonomi &amp; risk minggu ini\n` +
-            `• <code>/outlook scenario</code> — 3 skenario Bull/Base/Bear detail`,
-            { parse_mode: 'HTML' }
-          );
-        } else if (sub === 'macro') {
+        if (sub === 'macro') {
           const { runOutlookMacro } = require('../outlook');
           await runOutlookMacro(bot, chatId);
         } else if (sub === 'scenario') {
           const { runOutlookScenario } = require('../outlook');
           await runOutlookScenario(bot, chatId);
+        } else if (sub && !keywords.includes(sub)) {
+          // Treat as pair keyword — e.g. /outlook BTC
+          const { runOutlookPair } = require('../outlook');
+          await runOutlookPair(bot, chatId, sub);
         } else {
           const { runOutlook } = require('../outlook');
           await runOutlook(bot, chatId);
