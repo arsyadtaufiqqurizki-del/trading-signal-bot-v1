@@ -37,6 +37,7 @@ module.exports = async (req, res) => {
           `📈 /trend — <b>Analisis Tren Sosmed</b>\n\n` +
           `<b>🔭 Outlook Sub-commands:</b>\n` +
           `🪙 /outlook BTC — Outlook spesifik per pair (BTC, ETH, SOL, dll)\n` +
+          `🏭 /outlook sector — Sector rotation heatmap (L1, DeFi, AI, Meme, dll)\n` +
           `🌐 /outlook macro — Kalender ekonomi &amp; risk minggu ini\n` +
           `📐 /outlook scenario — 3 skenario Bull/Base/Bear detail\n\n` +
           `<b>🚨 Real-time Alerts:</b>\n` +
@@ -56,7 +57,7 @@ module.exports = async (req, res) => {
       } else if (text.startsWith('/outlook')) {
         const args     = text.trim().split(/\s+/);
         const sub      = args[1]?.toLowerCase();
-        const keywords = ['macro', 'scenario'];
+        const keywords = ['macro', 'scenario', 'sector'];
 
         if (sub === 'macro') {
           const { runOutlookMacro } = require('../outlook');
@@ -64,6 +65,9 @@ module.exports = async (req, res) => {
         } else if (sub === 'scenario') {
           const { runOutlookScenario } = require('../outlook');
           await runOutlookScenario(bot, chatId);
+        } else if (sub === 'sector') {
+          const { runOutlookSector } = require('../outlook');
+          await runOutlookSector(bot, chatId);
         } else if (sub && !keywords.includes(sub)) {
           // Treat as pair keyword — e.g. /outlook BTC
           const { runOutlookPair } = require('../outlook');

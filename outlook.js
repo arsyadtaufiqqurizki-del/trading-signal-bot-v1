@@ -558,6 +558,211 @@ function buildScenarioReport({ score, scenarios, btc, fg }) {
   return r;
 }
 
+// ─── Sector Rotation ─────────────────────────────────────────────────────────
+
+const SECTORS = [
+  { label: 'L1 Mega Cap',    emoji: '🔵', coins: ['BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT','XRPUSDT'] },
+  { label: 'L1 Alt',         emoji: '🟣', coins: ['ADAUSDT','AVAXUSDT','NEARUSDT','APTUSDT','TONUSDT','SUIUSDT','TRXUSDT'] },
+  { label: 'L2',             emoji: '⚡', coins: ['MATICUSDT','ARBUSDT','OPUSDT','STRKUSDT','ZKUSDT'] },
+  { label: 'DeFi',           emoji: '🏦', coins: ['UNIUSDT','AAVEUSDT','GMXUSDT','DYDXUSDT','RUNEUSDT','LDOUSDT','SNXUSDT','JUPUSDT'] },
+  { label: 'AI / Compute',   emoji: '🤖', coins: ['FETUSDT','TAOUSDT','RENDERUSDT','WLDUSDT','HYPEUSDT'] },
+  { label: 'Meme',           emoji: '🐸', coins: ['DOGEUSDT','1000SHIBUSDT','1000PEPEUSDT','1000BONKUSDT','WIFUSDT','NOTUSDT'] },
+  { label: 'Infra / Oracle', emoji: '🔗', coins: ['LINKUSDT','DOTUSDT','ATOMUSDT','FILUSDT','STXUSDT','HBARUSDT'] },
+  { label: 'Narrative Alt',  emoji: '📊', coins: ['INJUSDT','SEIUSDT','TIAUSDT','ENAUSDT','EIGENUSDT','LTCUSDT'] },
+];
+
+function fetchAllTickers() {
+  return cached('outlook_all_tickers', 2 * 60_000, async () => {
+    try {
+      const { getAllTickers } = require('./binance');
+      return await getAllTickers();
+    } catch { return null; }
+  });
+}
+
+function coinName(symbol) {
+  return symbol.replace(/^1000/, '').replace('USDT', '');
+}
+
+function sectorMomentum(avgChange) {
+  if      (avgChange >= 6)  return { icon: '🔥', label: 'Hot' };
+  else if (avgChange >= 2)  return { icon: '📈', label: 'Trending' };
+  else if (avgChange >= -2) return { icon: '↔️',  label: 'Flat' };
+  else if (avgChange >= -6) return { icon: '📉', label: 'Cooling' };
+  else                      return { icon: '🧊', label: 'Cold' };
+}
+
+function changeColor(v) {
+  if (v >= 3)  return '🟢';
+  if (v >= 0)  return '🟡';
+  if (v >= -3) return '🟠';
+  return '🔴';
+}
+
+function analyzeSectors(tickers) {
+  const map = {};
+  for (const t of tickers) map[t.symbol] = t;
+  const totalMarketVol = tickers.reduce((s, t) => s + (t.quoteVolume || 0), 0);
+
+  return SECTORS.map(sector => {
+    const data = sector.coins
+      .map(sym => map[sym])
+      .filter(Boolean)
+      .map(t => ({ symbol: t.symbol, name: coinName(t.symbol), change: t.priceChangePercent, volume: t.quoteVolume }));
+
+    if (!data.length) return null;
+
+    const avgChange  = data.reduce((s, d) => s + d.change, 0) / data.length;
+    const totalVol   = data.reduce((s, d) => s + d.volume, 0);
+    const volShare   = totalMarketVol > 0 ? (totalVol / totalMarketVol) * 100 : 0;
+    const greenCount = data.filter(d => d.change > 0).length;
+    const breadth    = Math.round((greenCount / data.length) * 100);
+
+    const sorted     = [...data].sort((a, b) => b.change - a.change);
+
+    return {
+      label:      sector.label,
+      emoji:      sector.emoji,
+      avgChange:  Math.round(avgChange * 100) / 100,
+      totalVol,
+      volShare:   Math.round(volShare * 10) / 10,
+      breadth,
+      greenCount,
+      totalCount: data.length,
+      topGainers: sorted.slice(0, 3),
+      topLoser:   sorted[sorted.length - 1],
+    };
+  }).filter(Boolean);
+}
+
+async function generateSectorNarrative({ sectors, hotSectors, coldSectors }) {
+  if (!genAI) return null;
+  try {
+    const model  = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const hot    = hotSectors.map(s => `${s.label} (${pct(s.avgChange)})`).join(', ') || 'Tidak ada';
+    const cold   = coldSectors.map(s => `${s.label} (${pct(s.avgChange)})`).join(', ') || 'Tidak ada';
+    const prompt = `Kamu adalah analis crypto senior. Berdasarkan data rotasi sektor berikut, tulis 2-3 kalimat ringkas dan actionable dalam Bahasa Indonesia tentang ke mana capital mengalir dan apa implikasinya bagi trader.
+
+Hot sectors (capital masuk): ${hot}
+Cold sectors (capital keluar): ${cold}
+Total sectors dianalisis: ${sectors.length}
+
+Jangan gunakan bullet point. Fokus pada: sektor yang harus diperhatikan, sektor yang dihindari, dan satu advice konkret.`;
+
+    const result = await model.generateContent(prompt);
+    return result.response.text().trim();
+  } catch { return null; }
+}
+
+function buildSectorReport({ sectors, narrative }) {
+  const dateStr = new Date().toLocaleString('id-ID', {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Jakarta'
+  });
+  const timeStr = new Date().toLocaleString('id-ID', {
+    hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta'
+  });
+
+  const volFmt = (v) => v >= 1e9 ? `$${(v / 1e9).toFixed(1)}B` : v >= 1e6 ? `$${(v / 1e6).toFixed(0)}M` : `$${Math.round(v)}`;
+  const sorted = [...sectors].sort((a, b) => b.avgChange - a.avgChange);
+
+  const hotSectors  = sorted.filter(s => s.avgChange >= 2);
+  const coldSectors = sorted.filter(s => s.avgChange <= -2);
+  const flatSectors = sorted.filter(s => s.avgChange > -2 && s.avgChange < 2);
+
+  let r = `<b>🏭 SECTOR ROTATION</b>\n`;
+  r += `<i>Crypto Market Heatmap · ${dateStr} · ${timeStr} WIB</i>\n`;
+  r += `━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+
+  // ── Heatmap (semua sektor, sorted) ──
+  r += `<b>SECTOR HEATMAP (24H)</b>\n`;
+  for (const s of sorted) {
+    const { icon, label } = sectorMomentum(s.avgChange);
+    const cc              = changeColor(s.avgChange);
+    const changeStr       = (s.avgChange >= 0 ? '+' : '') + s.avgChange.toFixed(1) + '%';
+    const breadthStr      = `${s.greenCount}/${s.totalCount}`;
+    r += `${cc} ${s.emoji} <b>${s.label.padEnd(14)}</b> <code>${changeStr.padStart(7)}</code>  ${icon} ${label}\n`;
+  }
+
+  // ── Capital Flow Summary ──
+  r += `\n<b>CAPITAL FLOW</b>\n`;
+  if (hotSectors.length > 0) {
+    r += `📈 <b>Masuk:</b> ${hotSectors.map(s => `${s.emoji}${s.label}`).join(' · ')}\n`;
+  }
+  if (coldSectors.length > 0) {
+    r += `📉 <b>Keluar:</b> ${coldSectors.map(s => `${s.emoji}${s.label}`).join(' · ')}\n`;
+  }
+  if (flatSectors.length > 0) {
+    r += `↔️ <b>Flat:</b> ${flatSectors.map(s => `${s.emoji}${s.label}`).join(' · ')}\n`;
+  }
+
+  // ── Top 2 Sectors Detail ──
+  const topTwo = sorted.slice(0, 2);
+  if (topTwo.length > 0) {
+    r += `\n━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+    r += `<b>TOP SECTOR DETAIL</b>\n`;
+    for (const s of topTwo) {
+      const { icon } = sectorMomentum(s.avgChange);
+      r += `\n${s.emoji} <b>${s.label}</b>  ${icon} avg ${pct(s.avgChange)}\n`;
+      r += `   Vol: <b>${volFmt(s.totalVol)}</b>  (${s.volShare}% market)\n`;
+      r += `   Breadth: ${s.breadth}% hijau (${s.greenCount}/${s.totalCount})\n`;
+      const gainersStr = s.topGainers.map(c => `${c.name} ${pct(c.change)}`).join('  ');
+      r += `   Best: <code>${gainersStr}</code>\n`;
+    }
+  }
+
+  // ── Bottom sector detail ──
+  const bottomOne = sorted[sorted.length - 1];
+  if (bottomOne && bottomOne.avgChange < -2) {
+    r += `\n🧊 <b>${bottomOne.label}</b> — worst sector\n`;
+    r += `   avg ${pct(bottomOne.avgChange)}  |  Breadth: ${bottomOne.breadth}%\n`;
+    r += `   Laggard: ${bottomOne.topLoser?.name ?? '—'} ${pct(bottomOne.topLoser?.change ?? 0)}\n`;
+  }
+
+  // ── AI Narrative ──
+  if (narrative) {
+    r += `\n━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+    r += `<b>🤖 AI ROTATION INTELLIGENCE</b>\n`;
+    r += `<i>${narrative}</i>\n`;
+  }
+
+  r += `\n━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+  r += `<i>Sumber: Binance Futures 24H · ${sectors.length} sektor · ${sectors.reduce((s,x) => s + x.totalCount, 0)} coins</i>\n`;
+  r += `<i>Outlook global: /outlook · Per pair: /outlook BTC</i>`;
+
+  return r;
+}
+
+async function runOutlookSector(bot, chatId) {
+  await bot.sendMessage(chatId,
+    `🏭 <b>Sector Rotation</b>\nMemuat data ticker semua pair...`,
+    { parse_mode: 'HTML' }
+  );
+
+  try {
+    const tickers = await fetchAllTickers();
+    if (!tickers || !tickers.length) {
+      await bot.sendMessage(chatId, `❌ Gagal mengambil data ticker dari Binance. Coba lagi.`);
+      return;
+    }
+
+    const sectors     = analyzeSectors(tickers);
+    const sorted      = [...sectors].sort((a, b) => b.avgChange - a.avgChange);
+    const hotSectors  = sorted.filter(s => s.avgChange >= 2);
+    const coldSectors = sorted.filter(s => s.avgChange <= -2);
+
+    const narrative = await generateSectorNarrative({ sectors, hotSectors, coldSectors });
+    const report    = buildSectorReport({ sectors, narrative });
+
+    await bot.sendMessage(chatId, report, { parse_mode: 'HTML' });
+  } catch (e) {
+    console.error('[OutlookSector]', e.message);
+    await bot.sendMessage(chatId,
+      `❌ <b>Gagal memuat sector data:</b>\n<code>${e.message}</code>`,
+      { parse_mode: 'HTML' }
+    );
+  }
+}
+
 // ─── Pair Outlook — Fetchers ──────────────────────────────────────────────────
 
 function resolvePairSymbol(keyword) {
@@ -1037,4 +1242,4 @@ async function runOutlookScenario(bot, chatId) {
   await bot.sendMessage(chatId, report, { parse_mode: 'HTML' });
 }
 
-module.exports = { runOutlook, runOutlookMacro, runOutlookScenario, runOutlookPair };
+module.exports = { runOutlook, runOutlookMacro, runOutlookScenario, runOutlookPair, runOutlookSector };
