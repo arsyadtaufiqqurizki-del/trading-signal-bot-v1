@@ -6,7 +6,10 @@ function parseContentAngles(text) {
   const angleBlocks = rawBlocks.filter(b => b.trim() && b.includes('🎯'));
 
   return angleBlocks.map(block => {
-    const angleName = (block.match(/🎯\s*Angle\s*:\s*(.+)/i) || [])[1]?.trim() || 'Angle';
+    // Capture text right after 🎯, stopping before the next section emoji
+    const rawAngle  = (block.match(/🎯([^🪝💎📣\n]+)/i) || [])[1]?.trim() || 'Angle';
+    // Strip "Angle N ·" or "Angle:" prefix so we're left with just the angle type/title
+    const angleName = rawAngle.replace(/^Angle\s*\d*\s*[·:\-]?\s*/i, '').trim() || rawAngle;
     const hook      = (block.match(/🪝\s*Hook\s*:\s*"?([^"\n]+)"?/i) || [])[1]?.trim() || '';
     const value     = (block.match(/💎\s*Value\s*:\s*([\s\S]+?)(?=📣|$)/i) || [])[1]?.trim() || '';
     const cta       = (block.match(/📣\s*CTA\s*:\s*"?([^"\n]+)"?/i) || [])[1]?.trim() || '';
