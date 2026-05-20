@@ -20,9 +20,13 @@ function formatSignal(signal, rank, total) {
   // Setup type
   let setupType = 'Trend Continuation';
   if (signal.isReversal) {
-    setupType = signal.liquiditySweep ? '🔄 Counter-Trend: Liquidity Sweep' : '🔄 Counter-Trend: Divergence Reversal';
+    setupType = signal.liquiditySweep ? '🔄 Counter-Trend: Liquidity Sweep'
+      : signal.choch                  ? '🔄 Counter-Trend: CHoCH'
+      : '🔄 Counter-Trend: Divergence Reversal';
   } else if (signal.liquiditySweep) {
     setupType = 'Liquidity Sweep Reversal 🎯';
+  } else if (signal.choch) {
+    setupType = 'CHoCH — Structure Shift 🔄';
   } else if (signal.divergence) {
     setupType = 'Divergence Reversal';
   } else if (signal.bos) {
@@ -81,6 +85,35 @@ function formatSignal(signal, rank, total) {
       ? `HTF bias <b>${signal.htfBias}</b> dikonfirmasi ${signal.factors.length} faktor confluence. RSI 1H di ${fmt(signal.rsi, 1)} ${rsiPos}. ADX ${fmt(signal.adx, 1)} mengonfirmasi kekuatan tren. Entry di zona high-probability dengan SL terstruktur di bawah support.`
       : `HTF bias <b>${signal.htfBias}</b> dengan tekanan bearish dari ${signal.factors.length} faktor confluence. RSI 1H di ${fmt(signal.rsi, 1)} ${rsiPos}. ADX ${fmt(signal.adx, 1)} mengonfirmasi dominasi seller. SL ditempatkan di atas resistance struktur.`);
 
+  // Support & Resistance display
+  const srLine = (() => {
+    const res = signal.nearestResistance;
+    const sup = signal.nearestSupport;
+    if (!res && !sup) return '';
+    const resStr = res
+      ? `🔴 <b>Resistance:</b> ${p(res.price)} (${res.strength}, ${res.touches}x tested)`
+      : '🔴 <b>Resistance:</b> -';
+    const supStr = sup
+      ? `🟢 <b>Support:</b> ${p(sup.price)} (${sup.strength}, ${sup.touches}x tested)`
+      : '🟢 <b>Support:</b> -';
+    return `\n━━━━━━━━━━━━━━━━━━━━\n📐 <b>LEVEL KUNCI (HTF)</b>\n${resStr}\n${supStr}`;
+  })();
+
+  // Fibonacci Retracement display
+  const fibLine = (() => {
+    const levels = signal.fibLevels;
+    const near   = signal.fibNearLevel;
+    if (!levels || levels.length === 0) return '';
+    const swingDir = signal.fibBullish ? '📈' : '📉';
+    const swingStr = `${swingDir} Swing: ${p(signal.fibSwingLow)} → ${p(signal.fibSwingHigh)}`;
+    const levelList = levels.map(f => {
+      const isNear = near && f.ratio === near.ratio;
+      const tag    = isNear ? ' ◀ Price Here' : '';
+      return `  ${isNear ? '⭐' : '•'} ${f.label}: ${p(f.price)}${tag}`;
+    }).join('\n');
+    return `\n━━━━━━━━━━━━━━━━━━━━\n📏 <b>FIBONACCI RETRACEMENT (4H)</b>\n${swingStr}\n${levelList}`;
+  })();
+
   // Confluence factors list
   const confluenceList = signal.factors.map(f => `  ✅ ${f}`).join('\n');
 
@@ -117,7 +150,7 @@ ${bar} ${score} pts (${confLevel})
 
 <b>💰 Risk:</b> ${signal.riskSuggestion || '0.5% per trade'}
 <b>🔧 Leverage:</b> ${leverage}
-
+${srLine}${fibLine}
 ━━━━━━━━━━━━━━━━━━━━
 <b>🔗 CONFLUENCE FACTORS (${signal.factors.length} aktif)</b>
 ${confluenceList}

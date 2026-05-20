@@ -55,23 +55,22 @@ function isVolumeSpike(candles, period = 20, multiplier = 1.5) {
 // ── MARKET STRUCTURE ─────────────────────────────────────────────────────────
 function detectStructure(candles) {
   if (candles.length < 20) return { trend: 'UNKNOWN', highs: [], lows: [] };
-  const slice = candles.slice(-50);
+  const slice = candles.slice(-100);
   const highs = [], lows = [];
-  for (let i = 2; i < slice.length - 2; i++) {
-    if (slice[i].high > slice[i-1].high && slice[i].high > slice[i-2].high &&
-        slice[i].high > slice[i+1].high && slice[i].high > slice[i+2].high)
+  // 3-candle pivot lookback — filters noise better than 2
+  for (let i = 3; i < slice.length - 3; i++) {
+    if ([1,2,3].every(o => slice[i].high >= slice[i-o].high && slice[i].high >= slice[i+o].high))
       highs.push({ idx: i, price: slice[i].high });
-    if (slice[i].low < slice[i-1].low && slice[i].low < slice[i-2].low &&
-        slice[i].low < slice[i+1].low && slice[i].low < slice[i+2].low)
+    if ([1,2,3].every(o => slice[i].low <= slice[i-o].low && slice[i].low <= slice[i+o].low))
       lows.push({ idx: i, price: slice[i].low });
   }
 
   let trend = 'RANGING';
   if (highs.length >= 2 && lows.length >= 2) {
     const hh = highs[highs.length-1].price > highs[highs.length-2].price;
-    const hl = lows[lows.length-1].price > lows[lows.length-2].price;
+    const hl = lows[lows.length-1].price  > lows[lows.length-2].price;
     const lh = highs[highs.length-1].price < highs[highs.length-2].price;
-    const ll = lows[lows.length-1].price < lows[lows.length-2].price;
+    const ll = lows[lows.length-1].price  < lows[lows.length-2].price;
     if (hh && hl) trend = 'UPTREND';
     else if (lh && ll) trend = 'DOWNTREND';
   }
@@ -92,24 +91,81 @@ function detectBOS(candles, structure) {
   return null;
 }
 
+// ── CHoCH (CHANGE OF CHARACTER) ──────────────────────────────────────────────
+// Earlier reversal signal than BOS: breaks the most recent counter-swing level
+// UPTREND   → price breaks below last Higher Low  = BEARISH_CHOCH (first crack)
+// DOWNTREND → price breaks above last Lower High  = BULLISH_CHOCH (first crack)
+function detectCHoCH(candles, structure) {
+  if (!structure || structure.trend === 'RANGING' || structure.trend === 'UNKNOWN') return null;
+  if (candles.length < 2) return null;
+  const last = candles[candles.length - 1];
+  const prev = candles[candles.length - 2];
+
+  if (structure.trend === 'DOWNTREND' && structure.highs.length >= 1) {
+    const recentLH = structure.highs[structure.highs.length - 1]?.price;
+    if (recentLH && last.close > recentLH && prev.close > recentLH) return 'BULLISH_CHOCH';
+  }
+  if (structure.trend === 'UPTREND' && structure.lows.length >= 1) {
+    const recentHL = structure.lows[structure.lows.length - 1]?.price;
+    if (recentHL && last.close < recentHL && prev.close < recentHL) return 'BEARISH_CHOCH';
+  }
+  return null;
+}
+
+// ── FIBONACCI RETRACEMENT ────────────────────────────────────────────────────
+function calcFibLevels(swingLow, swingHigh) {
+  if (!swingLow || !swingHigh || swingHigh <= swingLow) return [];
+  const range = swingHigh - swingLow;
+  return [
+    { ratio: 0.236, price: swingHigh - range * 0.236, label: '23.6%' },
+    { ratio: 0.382, price: swingHigh - range * 0.382, label: '38.2%' },
+    { ratio: 0.500, price: swingHigh - range * 0.500, label: '50.0%' },
+    { ratio: 0.618, price: swingHigh - range * 0.618, label: '61.8% 🥇' },
+    { ratio: 0.786, price: swingHigh - range * 0.786, label: '78.6%' },
+  ];
+}
+
 // ── SUPPORT/RESISTANCE ───────────────────────────────────────────────────────
 function findKeyLevels(candles, count = 5) {
-  const levels = [];
-  const slice = candles.slice(-100);
-  for (let i = 3; i < slice.length - 3; i++) {
-    const pivot = slice[i];
-    const isResist = [1,2,3].every(o => pivot.high >= slice[i-o].high && pivot.high >= slice[i+o].high);
-    const isSupport = [1,2,3].every(o => pivot.low <= slice[i-o].low && pivot.low <= slice[i+o].low);
-    if (isResist) levels.push({ type: 'RESISTANCE', price: pivot.high });
-    if (isSupport) levels.push({ type: 'SUPPORT', price: pivot.low });
+  const tolerance = 0.005;
+  const slice = candles.slice(-150);
+
+  // Pivot detection with 4-candle lookback (stronger than 3 — filters noise)
+  const pivots = [];
+  for (let i = 4; i < slice.length - 4; i++) {
+    const c = slice[i];
+    if ([1,2,3,4].every(o => c.high >= slice[i-o].high && c.high >= slice[i+o].high))
+      pivots.push({ type: 'RESISTANCE', price: c.high });
+    if ([1,2,3,4].every(o => c.low <= slice[i-o].low && c.low <= slice[i+o].low))
+      pivots.push({ type: 'SUPPORT', price: c.low });
   }
-  // deduplicate levels within 0.5% of each other
-  const merged = [];
-  levels.sort((a, b) => a.price - b.price).forEach(l => {
-    if (!merged.length || Math.abs(l.price - merged[merged.length-1].price) / merged[merged.length-1].price > 0.005)
-      merged.push(l);
-  });
-  return merged.slice(-count * 2);
+
+  // Merge pivots within 0.5% into zones, averaging their price
+  pivots.sort((a, b) => a.price - b.price);
+  const zones = [];
+  for (const p of pivots) {
+    const last = zones[zones.length - 1];
+    if (!last || Math.abs(p.price - last.price) / last.price > tolerance) {
+      zones.push({ type: p.type, price: p.price, touches: 0, strength: 'WEAK' });
+    } else {
+      last.price = (last.price + p.price) / 2;
+    }
+  }
+
+  // Count how many candles actually tested each zone
+  for (const zone of zones) {
+    zone.touches = slice.filter(c => {
+      const ref = zone.type === 'RESISTANCE' ? c.high : c.low;
+      return Math.abs(ref - zone.price) / zone.price < tolerance;
+    }).length;
+    zone.strength = zone.touches >= 5 ? 'STRONG' : zone.touches >= 3 ? 'MEDIUM' : 'WEAK';
+  }
+
+  // Return most-tested levels first, capped at count*2
+  return zones
+    .filter(z => z.touches > 0)
+    .sort((a, b) => b.touches - a.touches)
+    .slice(0, count * 2);
 }
 
 // ── RSI DIVERGENCE ───────────────────────────────────────────────────────────
@@ -317,7 +373,8 @@ function calcADX(candles, period = 14) {
 
 module.exports = {
   calcEMA, calcRSI, calcATR, calcADX, calcMACD, calcStochRSI, calcVWAP,
-  isVolumeSpike, detectStructure, detectBOS, findKeyLevels,
+  isVolumeSpike, detectStructure, detectBOS, detectCHoCH,
+  calcFibLevels, findKeyLevels,
   detectDivergence, detectFVG, detectOrderBlocks, detectCandlePattern,
   detectLiquiditySweep
 };

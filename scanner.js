@@ -2,8 +2,8 @@
 const { getKlines } = require('./binance');
 const {
   calcEMA, calcRSI, calcATR, calcADX, calcMACD, calcStochRSI,
-  isVolumeSpike, detectStructure, detectBOS,
-  findKeyLevels, detectDivergence, detectFVG, detectOrderBlocks,
+  isVolumeSpike, detectStructure, detectBOS, detectCHoCH,
+  calcFibLevels, findKeyLevels, detectDivergence, detectFVG, detectOrderBlocks,
   detectCandlePattern, detectLiquiditySweep
 } = require('./indicators');
 const { fmt } = require('./utils');
@@ -167,6 +167,7 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
   const ltfRsi    = calcRSI(ltfCloses, 14);
   const ltfStruct = detectStructure(ltfCandles);
   const ltfBos    = detectBOS(ltfCandles, ltfStruct);
+  const ltfChoch  = detectCHoCH(ltfCandles, ltfStruct);
   const ltfDiv    = detectDivergence(ltfCandles, ltfRsi);
   const ltfVolume = isVolumeSpike(ltfCandles, 20, 1.5);
   const ltfAtr    = calcATR(ltfCandles, 14);
@@ -200,6 +201,7 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
   // Execution Trigger (m15)
   const execStruct = detectStructure(execCandles);
   const execBos    = detectBOS(execCandles, execStruct);
+  const execChoch  = detectCHoCH(execCandles, execStruct);
   const execRsi      = calcRSI(execCandles.map(c => c.close), 14);
   const execDiv      = detectDivergence(execCandles, execRsi);
 
@@ -209,6 +211,25 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
   const htfPattern   = detectCandlePattern(htfCandles);
 
   const price = ltfCandles[ltfCandles.length - 1].close;
+
+  // Nearest S/R levels for display (closest below/above price)
+  const nearestSupport    = keyLevels.filter(l => l.type === 'SUPPORT'    && l.price < price).sort((a, b) => b.price - a.price)[0] || null;
+  const nearestResistance = keyLevels.filter(l => l.type === 'RESISTANCE' && l.price > price).sort((a, b) => a.price - b.price)[0] || null;
+
+  // Fibonacci Retracement from HTF swing structure
+  let fibLevels = [], fibNearLevel = null, fibBullish = false;
+  let fibSwingLow = null, fibSwingHigh = null;
+  if (htfStruct.highs.length >= 1 && htfStruct.lows.length >= 1) {
+    const recentHigh = htfStruct.highs[htfStruct.highs.length - 1];
+    const recentLow  = htfStruct.lows[htfStruct.lows.length - 1];
+    fibSwingLow  = recentLow.price;
+    fibSwingHigh = recentHigh.price;
+    // low before high = bullish move (retracement = support zones)
+    fibBullish = recentLow.idx < recentHigh.idx;
+    fibLevels  = calcFibLevels(fibSwingLow, fibSwingHigh);
+    // 0.8% tolerance — fib zones are conceptual, not exact
+    fibNearLevel = fibLevels.find(f => Math.abs(price - f.price) / price < 0.008);
+  }
 
   // Tier 3 — structural additions
   const ltfSweep    = detectLiquiditySweep(ltfCandles, ltfStruct);
@@ -273,6 +294,10 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
   if (ltfBos === 'BULLISH_BOS') { longScore += 2; longFactors.push('Bullish BOS Confirmed ✅'); }
   if (ltfBos === 'BEARISH_BOS') { shortScore += 2; shortFactors.push('Bearish BOS Confirmed ✅'); }
 
+  // 5b. CHoCH — early reversal signal, before BOS is confirmed (Medium Weight)
+  if (ltfChoch === 'BULLISH_CHOCH') { longScore  += 2; longFactors.push('Bullish CHoCH — Structure Shift 🔄'); }
+  if (ltfChoch === 'BEARISH_CHOCH') { shortScore += 2; shortFactors.push('Bearish CHoCH — Structure Shift 🔄'); }
+
   // 6. Volume spike — directional (bullish candle = long pressure, bearish = short pressure)
   if (ltfVolume) {
     const lastLtf = ltfCandles[ltfCandles.length - 1];
@@ -307,11 +332,31 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
   if (nearHtfBullFvg) { longScore  += 2; longFactors.push('Price filling HTF Bullish FVG 4H 🏦'); }
   if (nearHtfBearFvg) { shortScore += 2; shortFactors.push('Price filling HTF Bearish FVG 4H 🏦'); }
 
-  // 9. Key level proximity (Low Weight)
+  // 9. Key level proximity — strength-weighted (WEAK +1, MEDIUM +2, STRONG +3)
   const nearSupport = keyLevels.find(l => l.type === 'SUPPORT' && Math.abs(price - l.price) / price < 0.005);
   const nearResist  = keyLevels.find(l => l.type === 'RESISTANCE' && Math.abs(price - l.price) / price < 0.005);
-  if (nearSupport) { longScore += 1; longFactors.push(`Near Key Support $${fmt(nearSupport.price)} ✅`); }
-  if (nearResist)  { shortScore += 1; shortFactors.push(`Near Key Resistance $${fmt(nearResist.price)} ✅`); }
+  if (nearSupport) {
+    const bonus = nearSupport.strength === 'STRONG' ? 3 : nearSupport.strength === 'MEDIUM' ? 2 : 1;
+    longScore += bonus;
+    longFactors.push(`Near Key Support $${fmt(nearSupport.price)} (${nearSupport.strength}, ${nearSupport.touches}x tested) ✅`);
+  }
+  if (nearResist) {
+    const bonus = nearResist.strength === 'STRONG' ? 3 : nearResist.strength === 'MEDIUM' ? 2 : 1;
+    shortScore += bonus;
+    shortFactors.push(`Near Key Resistance $${fmt(nearResist.price)} (${nearResist.strength}, ${nearResist.touches}x tested) ✅`);
+  }
+
+  // 9b. Fibonacci retracement zone (61.8% = +2, others = +1)
+  if (fibNearLevel) {
+    const bonus = fibNearLevel.ratio === 0.618 ? 2 : 1;
+    if (fibBullish) {
+      longScore  += bonus;
+      longFactors.push(`Fib ${fibNearLevel.label} Support $${fmt(fibNearLevel.price)} 📐`);
+    } else {
+      shortScore += bonus;
+      shortFactors.push(`Fib ${fibNearLevel.label} Resistance $${fmt(fibNearLevel.price)} 📐`);
+    }
+  }
 
   // 10. MACD Momentum — LTF (Medium Weight)
   if (ltfMacd.histogram > 0 && ltfMacd.macd > ltfMacd.signal) {
@@ -373,8 +418,8 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
   }
 
   // Reversal path: bypass trend alignment jika ada sinyal reversal kuat (Sweep atau Divergence)
-  const longReversalValid  = (ltfSweep === 'BULLISH_SWEEP' || ltfDiv === 'BULLISH_DIVERGENCE') && longScore >= cfg.minConfluence;
-  const shortReversalValid = (ltfSweep === 'BEARISH_SWEEP' || ltfDiv === 'BEARISH_DIVERGENCE') && shortScore >= cfg.minConfluence;
+  const longReversalValid  = (ltfSweep === 'BULLISH_SWEEP' || ltfDiv === 'BULLISH_DIVERGENCE' || ltfChoch === 'BULLISH_CHOCH') && longScore >= cfg.minConfluence;
+  const shortReversalValid = (ltfSweep === 'BEARISH_SWEEP' || ltfDiv === 'BEARISH_DIVERGENCE' || ltfChoch === 'BEARISH_CHOCH') && shortScore >= cfg.minConfluence;
 
   // Trend alignment
   const longTrendOk  = htfBias !== 'BEARISH' && ltfStruct.trend !== 'DOWNTREND';
@@ -387,7 +432,7 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
 
   if (longScore >= cfg.minConfluence && longScore >= shortScore + cfg.minScoreGap && longAllowed) {
     const isReversal      = !longTrendOk && !ltfRanging && longReversalValid;
-    const isLongConfirmed = (execBos === 'BULLISH_BOS' || execDiv === 'BULLISH_DIVERGENCE');
+    const isLongConfirmed = (execBos === 'BULLISH_BOS' || execDiv === 'BULLISH_DIVERGENCE' || execChoch === 'BULLISH_CHOCH');
 
     const atr    = ltfAtr;
     const slRaw  = calcStructureSL(price, 'LONG', ltfStruct, atr, htfStruct);
@@ -410,7 +455,7 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
     const rrCons   = parseFloat(((tp1 - entryConservative) / riskCons).toFixed(2));
 
     const execConfirmLabel = isLongConfirmed
-      ? `m15 Confirmation: ${execBos === 'BULLISH_BOS' ? 'BOS' : 'Divergence'} ✅`
+      ? `m15 Confirmation: ${execBos === 'BULLISH_BOS' ? 'BOS' : execChoch === 'BULLISH_CHOCH' ? 'CHoCH' : 'Divergence'} ✅`
       : 'm15 Konfirmasi: Belum Terkonfirmasi ⚠️';
 
     if (rrAgg >= cfg.minRR && sl > 0) {
@@ -423,18 +468,20 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
         rrAgg, rrCons,
         confluenceScore: longScore, factors: [...longFactors, execConfirmLabel],
         rsi: curRsi, htfBias, htfTrend: htfStruct.trend, ltfTrend: ltfStruct.trend,
-        bos: ltfBos, divergence: ltfDiv, volumeSpike: ltfVolume,
+        bos: ltfBos, choch: ltfChoch, divergence: ltfDiv, volumeSpike: ltfVolume,
         nearLevel: nearSupport,
         atr, htfEma50: curHtfE50, htfEma200: curHtfE200,
         liquiditySweep: ltfSweep, marketPhase, riskSuggestion,
         sessionInfo, adx: ltfAdx,
         invalidationLevel: sl,
         isReversal, adxWarning,
+        nearestSupport, nearestResistance,
+        fibLevels, fibNearLevel, fibSwingLow, fibSwingHigh, fibBullish,
       };
     }
   } else if (shortScore >= cfg.minConfluence && shortScore >= longScore + cfg.minScoreGap && shortAllowed) {
     const isReversal       = !shortTrendOk && !ltfRanging && shortReversalValid;
-    const isShortConfirmed = (execBos === 'BEARISH_BOS' || execDiv === 'BEARISH_DIVERGENCE');
+    const isShortConfirmed = (execBos === 'BEARISH_BOS' || execDiv === 'BEARISH_DIVERGENCE' || execChoch === 'BEARISH_CHOCH');
 
     const atr        = ltfAtr;
     const slRawShort = calcStructureSL(price, 'SHORT', ltfStruct, atr, htfStruct);
@@ -457,7 +504,7 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
     const rrCons   = parseFloat(((entryConservative - tp1) / riskCons).toFixed(2));
 
     const execConfirmLabel = isShortConfirmed
-      ? `m15 Confirmation: ${execBos === 'BEARISH_BOS' ? 'BOS' : 'Divergence'} ✅`
+      ? `m15 Confirmation: ${execBos === 'BEARISH_BOS' ? 'BOS' : execChoch === 'BEARISH_CHOCH' ? 'CHoCH' : 'Divergence'} ✅`
       : 'm15 Konfirmasi: Belum Terkonfirmasi ⚠️';
 
     if (rrAgg >= cfg.minRR && tp1 > 0) {
@@ -470,13 +517,15 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
         rrAgg, rrCons,
         confluenceScore: shortScore, factors: [...shortFactors, execConfirmLabel],
         rsi: curRsi, htfBias, htfTrend: htfStruct.trend, ltfTrend: ltfStruct.trend,
-        bos: ltfBos, divergence: ltfDiv, volumeSpike: ltfVolume,
+        bos: ltfBos, choch: ltfChoch, divergence: ltfDiv, volumeSpike: ltfVolume,
         nearLevel: nearResist,
         atr, htfEma50: curHtfE50, htfEma200: curHtfE200,
         liquiditySweep: ltfSweep, marketPhase, riskSuggestion,
         sessionInfo, adx: ltfAdx,
         invalidationLevel: slShort,
         isReversal, adxWarning,
+        nearestSupport, nearestResistance,
+        fibLevels, fibNearLevel, fibSwingLow, fibSwingHigh, fibBullish,
       };
     }
   }
