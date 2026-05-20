@@ -152,6 +152,15 @@ function fetchPolyScore() {
   });
 }
 
+function fetchBtcKlines() {
+  return cached('outlook_btc_klines_4h', 5 * 60_000, async () => {
+    try {
+      const { getKlines } = require('./binance');
+      return await getKlines('BTCUSDT', '4h', 200);
+    } catch { return null; }
+  });
+}
+
 function fetchUpcomingEvents() {
   return cached('outlook_events', 30 * 60_000, async () => {
     try {
@@ -273,7 +282,7 @@ function detectCyclePhase({ fg, global, score }) {
 
 // ─── 3-Scenario Framework ─────────────────────────────────────────────────────
 
-function buildScenarios({ score, btc }) {
+function buildScenarios({ score, btc, btcCandles }) {
   const p = btc?.price ?? 0;
 
   let bullProb, baseProb, bearProb;
@@ -285,22 +294,74 @@ function buildScenarios({ score, btc }) {
 
   const fmtP = (n) => p > 0 ? '$' + Math.round(n).toLocaleString('en-US') : 'N/A';
 
+  // ── Dynamic price targets from real S/R and ATR ──
+  let bullTarget, baseRangeLow, baseRangeHigh, bearTarget;
+  let bullLabel = '', bearLabel = '', baseLabel = '';
+
+  if (btcCandles && btcCandles.length >= 50 && p > 0) {
+    const { calcATR, findKeyLevels } = require('./indicators');
+    const atr      = calcATR(btcCandles, 14);
+    const levels   = findKeyLevels(btcCandles, 8);
+
+    const resistances = levels
+      .filter(l => l.type === 'RESISTANCE' && l.price > p && l.price < p * 1.30)
+      .sort((a, b) => a.price - b.price);
+
+    const supports = levels
+      .filter(l => l.type === 'SUPPORT' && l.price < p && l.price > p * 0.70)
+      .sort((a, b) => b.price - a.price);
+
+    const nearR = resistances[0];
+    const nearS = supports[0];
+
+    // Bull: nearest resistance, fallback ATR×3
+    if (nearR) {
+      bullTarget = nearR.price;
+      bullLabel  = `R ${nearR.strength === 'STRONG' ? 'STRONG' : 'MEDIUM'} — ${fmtP(nearR.price)}`;
+    } else {
+      bullTarget = p + atr * 3;
+      bullLabel  = `ATR×3 — ${fmtP(bullTarget)}`;
+    }
+
+    // Bear: nearest support, fallback ATR×3
+    if (nearS) {
+      bearTarget = nearS.price;
+      bearLabel  = `S ${nearS.strength === 'STRONG' ? 'STRONG' : 'MEDIUM'} — ${fmtP(nearS.price)}`;
+    } else {
+      bearTarget = p - atr * 3;
+      bearLabel  = `ATR×3 — ${fmtP(bearTarget)}`;
+    }
+
+    // Base: between nearest S and R (or ±1 ATR as fallback)
+    baseRangeLow  = nearS ? nearS.price : p - atr;
+    baseRangeHigh = nearR ? nearR.price : p + atr;
+    baseLabel     = `${fmtP(baseRangeLow)}–${fmtP(baseRangeHigh)}`;
+  } else {
+    bullTarget    = p * 1.12;
+    bearTarget    = p * 0.88;
+    baseRangeLow  = p * 0.95;
+    baseRangeHigh = p * 1.05;
+    bullLabel     = fmtP(bullTarget);
+    bearLabel     = fmtP(bearTarget);
+    baseLabel     = `${fmtP(baseRangeLow)}–${fmtP(baseRangeHigh)}`;
+  }
+
   return [
     {
       emoji: '🐂', label: 'BULL CASE', prob: bullProb,
-      target:    p > 0 ? `BTC breakout ke ${fmtP(p * 1.12)}` : 'Breakout ke resistance baru',
+      target:    p > 0 ? `BTC breakout ke ${bullLabel}` : 'Breakout ke resistance baru',
       condition: score >= 3 ? 'Momentum kuat berlanjut, ETF inflow, data macro supportive' : 'Butuh catalyst: data macro positif atau news bull besar',
       action:    'Long di area support kuat, target TP2 dengan trailing SL'
     },
     {
       emoji: '📊', label: 'BASE CASE', prob: baseProb,
-      target:    p > 0 ? `BTC konsolidasi ${fmtP(p * 0.95)}–${fmtP(p * 1.05)}` : 'Ranging di level saat ini',
+      target:    p > 0 ? `BTC konsolidasi ${baseLabel}` : 'Ranging di level saat ini',
       condition: 'Tidak ada catalyst besar, market menunggu data ekonomi berikutnya',
       action:    'Scalp di batas range, avoid hold besar, size kecil'
     },
     {
       emoji: '🐻', label: 'BEAR CASE', prob: bearProb,
-      target:    p > 0 ? `BTC koreksi ke ${fmtP(p * 0.88)}` : 'Retest support major',
+      target:    p > 0 ? `BTC koreksi ke ${bearLabel}` : 'Retest support major',
       condition: score <= -3 ? 'Macro memburuk, liquidation cascade, bad news' : 'Trigger: data CPI buruk atau stop hunt besar di bawah support',
       action:    'Kurangi leverage, pasang SL ketat, ambil profit sebelum event risiko'
     }
@@ -1176,7 +1237,7 @@ async function runOutlook(bot, chatId) {
     { parse_mode: 'HTML' }
   );
 
-  const [fg, global, btc, lsr, oi, funding, polyScore, events] = await Promise.all([
+  const [fg, global, btc, lsr, oi, funding, polyScore, events, btcCandles] = await Promise.all([
     fetchFearGreed(),
     fetchGlobal(),
     fetchBtcData(),
@@ -1184,12 +1245,13 @@ async function runOutlook(bot, chatId) {
     fetchBtcOI(),
     fetchBtcFunding(),
     fetchPolyScore(),
-    fetchUpcomingEvents()
+    fetchUpcomingEvents(),
+    fetchBtcKlines()
   ]);
 
   const { score, signals, bullCount, bearCount } = computeBiasScore({ fg, global, btc, lsr, oi, funding, polyScore });
   const cycleInfo = detectCyclePhase({ fg, global, score });
-  const scenarios = buildScenarios({ score, btc });
+  const scenarios = buildScenarios({ score, btc, btcCandles });
   const biasLabel = getBiasLabel(score);
 
   const narrative = await generateNarrative({
@@ -1225,18 +1287,19 @@ async function runOutlookMacro(bot, chatId) {
 async function runOutlookScenario(bot, chatId) {
   await bot.sendMessage(chatId, `📐 <b>Scenario Analysis</b>\nMenghitung skenario...`, { parse_mode: 'HTML' });
 
-  const [fg, global, btc, lsr, oi, funding, polyScore] = await Promise.all([
+  const [fg, global, btc, lsr, oi, funding, polyScore, btcCandles] = await Promise.all([
     fetchFearGreed(),
     fetchGlobal(),
     fetchBtcData(),
     fetchBtcLSR(),
     fetchBtcOI(),
     fetchBtcFunding(),
-    fetchPolyScore()
+    fetchPolyScore(),
+    fetchBtcKlines()
   ]);
 
   const { score } = computeBiasScore({ fg, global, btc, lsr, oi, funding, polyScore });
-  const scenarios = buildScenarios({ score, btc });
+  const scenarios = buildScenarios({ score, btc, btcCandles });
 
   const report = buildScenarioReport({ score, scenarios, btc, fg });
   await bot.sendMessage(chatId, report, { parse_mode: 'HTML' });
