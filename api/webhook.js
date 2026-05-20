@@ -61,6 +61,7 @@ module.exports = async (req, res) => {
         await bot.sendMessage(chatId,
           `Halo! Saya adalah <b>AI Trading Assistant</b> Anda.\n\nGunakan perintah berikut:\n\n` +
           `🔭 /outlook — <b>Market outlook 7-day: bias score, skenario &amp; kalender event</b>\n` +
+          `🏦 /stock — <b>Outlook saham Indonesia: IHSG &amp; LQ45</b>\n` +
           `⚡ /fast — <b>Sinyal instan sekarang</b>\n` +
           `🔍 /high — Scanning high-probability setup\n` +
           `📐 /quant — <b>Quant analysis: momentum screener &amp; stat report</b>\n` +
@@ -71,6 +72,9 @@ module.exports = async (req, res) => {
           `🔐 /crypto — <b>Dampak berita ekonomi ke market</b>\n` +
           `📰 /news — Berita market &amp; crypto terbaru\n` +
           `📈 /trend — <b>Analisis Tren Sosmed</b>\n\n` +
+          `<b>🏦 Stock Sub-commands:</b>\n` +
+          `📊 /stock BBCA — Analisis teknikal saham spesifik\n` +
+          `<i>Semua kode saham IDX didukung: BBRI, TLKM, GOTO, dll</i>\n\n` +
           `<b>🔭 Outlook Sub-commands:</b>\n` +
           `🪙 /outlook BTC — Outlook spesifik per pair (BTC, ETH, SOL, dll)\n` +
           `🏭 /outlook sector — Sector rotation heatmap (L1, DeFi, AI, Meme, dll)\n` +
@@ -111,6 +115,17 @@ module.exports = async (req, res) => {
         } else {
           const { runOutlook } = require('../outlook');
           await runOutlook(bot, chatId);
+        }
+      } else if (text.startsWith('/stock')) {
+        const args    = text.trim().split(/\s+/);
+        const ticker  = args[1];
+
+        if (ticker) {
+          const { runStockDetail } = require('../stock');
+          await runStockDetail(bot, chatId, ticker);
+        } else {
+          const { runStockOverview } = require('../stock');
+          await runStockOverview(bot, chatId);
         }
       } else if (text.startsWith('/liq')) {
         const args    = text.trim().split(/\s+/);
