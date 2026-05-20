@@ -112,6 +112,35 @@ function detectCHoCH(candles, structure) {
   return null;
 }
 
+// ── CVD (CUMULATIVE VOLUME DELTA) ────────────────────────────────────────────
+// Estimates buy/sell volume per candle using price position within the range,
+// then accumulates the delta to show net buying vs selling pressure over time.
+function calcCVD(candles) {
+  let cumDelta = 0;
+  return candles.map(c => {
+    const range = c.high - c.low;
+    const delta = range === 0 ? 0
+      : (c.volume * (c.close - c.low) / range) - (c.volume * (c.high - c.close) / range);
+    cumDelta += delta;
+    return { delta, cumDelta };
+  });
+}
+
+// Detects divergence between price and CVD over the last 20 candles:
+// Price falling + CVD rising  → hidden buying  (BULLISH_CVD_DIV)
+// Price rising  + CVD falling → hidden selling (BEARISH_CVD_DIV)
+function detectCVDDivergence(candles, cvdArr) {
+  if (candles.length < 20 || cvdArr.length < 20) return null;
+  const ps = candles.slice(-20), cs = cvdArr.slice(-20);
+  const priceRising  = ps[ps.length - 1].close > ps[0].close;
+  const priceFalling = ps[ps.length - 1].close < ps[0].close;
+  const cvdRising    = cs[cs.length - 1].cumDelta > cs[0].cumDelta;
+  const cvdFalling   = cs[cs.length - 1].cumDelta < cs[0].cumDelta;
+  if (priceFalling && cvdRising)  return 'BULLISH_CVD_DIV';
+  if (priceRising  && cvdFalling) return 'BEARISH_CVD_DIV';
+  return null;
+}
+
 // ── FIBONACCI RETRACEMENT ────────────────────────────────────────────────────
 function calcFibLevels(swingLow, swingHigh) {
   if (!swingLow || !swingHigh || swingHigh <= swingLow) return [];
@@ -374,6 +403,7 @@ function calcADX(candles, period = 14) {
 module.exports = {
   calcEMA, calcRSI, calcATR, calcADX, calcMACD, calcStochRSI, calcVWAP,
   isVolumeSpike, detectStructure, detectBOS, detectCHoCH,
+  calcCVD, detectCVDDivergence,
   calcFibLevels, findKeyLevels,
   detectDivergence, detectFVG, detectOrderBlocks, detectCandlePattern,
   detectLiquiditySweep

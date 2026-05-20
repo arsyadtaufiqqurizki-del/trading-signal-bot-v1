@@ -161,6 +161,7 @@ ${confluenceList}
 • <b>HTF Bias:</b> ${signal.htfBias}
 • <b>RSI 1H:</b> ${fmt(signal.rsi, 1)}
 • <b>ADX:</b> ${fmt(signal.adx, 1)} (Trend Strength)
+• <b>CVD:</b> ${signal.cvdCurrent != null ? (signal.cvdCurrent >= 0 ? '+' : '') + fmt(signal.cvdCurrent, 0) : 'N/A'} ${signal.cvdRising ? '↑ Buying Pressure' : '↓ Selling Pressure'}${signal.cvdDivergence ? ` | ⚠️ <b>${signal.cvdDivergence === 'BULLISH_CVD_DIV' ? 'Bullish Divergence' : 'Bearish Divergence'}</b>` : ''}
 
 <b>📝 ALASAN ENTRY:</b>
 <i>${reason}</i>

@@ -3,6 +3,7 @@ const { getKlines } = require('./binance');
 const {
   calcEMA, calcRSI, calcATR, calcADX, calcMACD, calcStochRSI,
   isVolumeSpike, detectStructure, detectBOS, detectCHoCH,
+  calcCVD, detectCVDDivergence,
   calcFibLevels, findKeyLevels, detectDivergence, detectFVG, detectOrderBlocks,
   detectCandlePattern, detectLiquiditySweep
 } = require('./indicators');
@@ -170,6 +171,12 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
   const ltfChoch  = detectCHoCH(ltfCandles, ltfStruct);
   const ltfDiv    = detectDivergence(ltfCandles, ltfRsi);
   const ltfVolume = isVolumeSpike(ltfCandles, 20, 1.5);
+  const ltfCVD    = calcCVD(ltfCandles);
+  const ltfCVDDiv = detectCVDDivergence(ltfCandles, ltfCVD);
+  const cvdCurrent = ltfCVD[ltfCVD.length - 1].cumDelta;
+  const cvdPrev5   = ltfCVD[ltfCVD.length - 6]?.cumDelta ?? cvdCurrent;
+  const cvdRising  = cvdCurrent > cvdPrev5;
+  const cvdFalling = cvdCurrent < cvdPrev5;
   const ltfAtr    = calcATR(ltfCandles, 14);
   const keyLevels = findKeyLevels(htfCandles, 5);
 
@@ -307,6 +314,12 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
     longScore  -= 1;
     shortScore -= 1;
   }
+
+  // 6b. CVD — Divergence (+2) and trend confirmation (+1)
+  if (ltfCVDDiv === 'BULLISH_CVD_DIV') { longScore  += 2; longFactors.push('Bullish CVD Divergence — Hidden Buying 📊'); }
+  if (ltfCVDDiv === 'BEARISH_CVD_DIV') { shortScore += 2; shortFactors.push('Bearish CVD Divergence — Hidden Selling 📊'); }
+  if (!ltfCVDDiv && cvdRising)  { longScore  += 1; longFactors.push('CVD Rising — Net Buying Pressure 📊'); }
+  if (!ltfCVDDiv && cvdFalling) { shortScore += 1; shortFactors.push('CVD Falling — Net Selling Pressure 📊'); }
 
   // 7. Order Block Touch — recent OBs only (High Weight)
   const nearBullOb = recentObs.find(ob => ob.type === 'BULLISH_OB' && price <= ob.top && price >= ob.bottom);
@@ -469,6 +482,7 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
         confluenceScore: longScore, factors: [...longFactors, execConfirmLabel],
         rsi: curRsi, htfBias, htfTrend: htfStruct.trend, ltfTrend: ltfStruct.trend,
         bos: ltfBos, choch: ltfChoch, divergence: ltfDiv, volumeSpike: ltfVolume,
+        cvdDivergence: ltfCVDDiv, cvdCurrent, cvdRising,
         nearLevel: nearSupport,
         atr, htfEma50: curHtfE50, htfEma200: curHtfE200,
         liquiditySweep: ltfSweep, marketPhase, riskSuggestion,
@@ -518,6 +532,7 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
         confluenceScore: shortScore, factors: [...shortFactors, execConfirmLabel],
         rsi: curRsi, htfBias, htfTrend: htfStruct.trend, ltfTrend: ltfStruct.trend,
         bos: ltfBos, choch: ltfChoch, divergence: ltfDiv, volumeSpike: ltfVolume,
+        cvdDivergence: ltfCVDDiv, cvdCurrent, cvdRising,
         nearLevel: nearResist,
         atr, htfEma50: curHtfE50, htfEma200: curHtfE200,
         liquiditySweep: ltfSweep, marketPhase, riskSuggestion,
