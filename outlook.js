@@ -152,11 +152,29 @@ function fetchPolyScore() {
   });
 }
 
-function fetchBtcKlines() {
+function fetchBtcKlines4h() {
   return cached('outlook_btc_klines_4h', 5 * 60_000, async () => {
     try {
       const { getKlines } = require('./binance');
       return await getKlines('BTCUSDT', '4h', 200);
+    } catch { return null; }
+  });
+}
+
+function fetchBtcKlinesDaily() {
+  return cached('outlook_btc_klines_1d', 15 * 60_000, async () => {
+    try {
+      const { getKlines } = require('./binance');
+      return await getKlines('BTCUSDT', '1d', 200);
+    } catch { return null; }
+  });
+}
+
+function fetchBtcKlinesWeekly() {
+  return cached('outlook_btc_klines_1w', 60 * 60_000, async () => {
+    try {
+      const { getKlines } = require('./binance');
+      return await getKlines('BTCUSDT', '1w', 100);
     } catch { return null; }
   });
 }
@@ -294,56 +312,83 @@ function buildScenarios({ score, btc, btcCandles }) {
 
   const fmtP = (n) => p > 0 ? '$' + Math.round(n).toLocaleString('en-US') : 'N/A';
 
-  // ── Dynamic price targets from real S/R and ATR ──
-  let bullTarget, baseRangeLow, baseRangeHigh, bearTarget;
+  // ── Dynamic price targets from multi-timeframe S/R and ATR ──
   let bullLabel = '', bearLabel = '', baseLabel = '';
 
-  if (btcCandles && btcCandles.length >= 50 && p > 0) {
+  const candles4h = btcCandles?.c4h;
+  const candlesD  = btcCandles?.d1;
+  const candlesW  = btcCandles?.w1;
+
+  if (candles4h && candles4h.length >= 50 && p > 0) {
     const { calcATR, findKeyLevels } = require('./indicators');
-    const atr      = calcATR(btcCandles, 14);
-    const levels   = findKeyLevels(btcCandles, 8);
 
-    const resistances = levels
-      .filter(l => l.type === 'RESISTANCE' && l.price > p && l.price < p * 1.30)
-      .sort((a, b) => a.price - b.price);
+    // ATR from 4H for fallback distance
+    const atr = calcATR(candles4h, 14);
 
-    const supports = levels
-      .filter(l => l.type === 'SUPPORT' && l.price < p && l.price > p * 0.70)
-      .sort((a, b) => b.price - a.price);
+    // Collect levels from each timeframe, tag with TF weight and label
+    const allLevels = [];
+    const addLevels = (candles, tf, tfWeight) => {
+      if (!candles || candles.length < 20) return;
+      for (const lvl of findKeyLevels(candles, 8)) {
+        allLevels.push({ ...lvl, tf, tfWeight });
+      }
+    };
+    addLevels(candles4h, '4H', 1);
+    addLevels(candlesD,  'D',  2);
+    addLevels(candlesW,  'W',  3);
+
+    // Score each level: higher TF and more touches = higher priority
+    const scored = allLevels.map(l => ({
+      ...l,
+      score: l.tfWeight * (l.touches || 1)
+    }));
+
+    const resistances = scored
+      .filter(l => l.type === 'RESISTANCE' && l.price > p && l.price < p * 1.35)
+      .sort((a, b) => {
+        // Prefer closer levels, break ties by score
+        const distA = (a.price - p) / p;
+        const distB = (b.price - p) / p;
+        if (Math.abs(distA - distB) > 0.02) return distA - distB;
+        return b.score - a.score;
+      });
+
+    const supports = scored
+      .filter(l => l.type === 'SUPPORT' && l.price < p && l.price > p * 0.65)
+      .sort((a, b) => {
+        const distA = (p - a.price) / p;
+        const distB = (p - b.price) / p;
+        if (Math.abs(distA - distB) > 0.02) return distA - distB;
+        return b.score - a.score;
+      });
 
     const nearR = resistances[0];
     const nearS = supports[0];
 
-    // Bull: nearest resistance, fallback ATR×3
+    // Bull: nearest resistance with TF label
     if (nearR) {
-      bullTarget = nearR.price;
-      bullLabel  = `R ${nearR.strength === 'STRONG' ? 'STRONG' : 'MEDIUM'} — ${fmtP(nearR.price)}`;
+      const str = nearR.strength === 'STRONG' ? 'STRONG' : 'MEDIUM';
+      bullLabel = `R ${str} (${nearR.tf}) — ${fmtP(nearR.price)}`;
     } else {
-      bullTarget = p + atr * 3;
-      bullLabel  = `ATR×3 — ${fmtP(bullTarget)}`;
+      bullLabel = `ATR×3 — ${fmtP(p + atr * 3)}`;
     }
 
-    // Bear: nearest support, fallback ATR×3
+    // Bear: nearest support with TF label
     if (nearS) {
-      bearTarget = nearS.price;
-      bearLabel  = `S ${nearS.strength === 'STRONG' ? 'STRONG' : 'MEDIUM'} — ${fmtP(nearS.price)}`;
+      const str = nearS.strength === 'STRONG' ? 'STRONG' : 'MEDIUM';
+      bearLabel = `S ${str} (${nearS.tf}) — ${fmtP(nearS.price)}`;
     } else {
-      bearTarget = p - atr * 3;
-      bearLabel  = `ATR×3 — ${fmtP(bearTarget)}`;
+      bearLabel = `ATR×3 — ${fmtP(p - atr * 3)}`;
     }
 
-    // Base: between nearest S and R (or ±1 ATR as fallback)
-    baseRangeLow  = nearS ? nearS.price : p - atr;
-    baseRangeHigh = nearR ? nearR.price : p + atr;
-    baseLabel     = `${fmtP(baseRangeLow)}–${fmtP(baseRangeHigh)}`;
+    // Base: between nearest S and R (or ±1 ATR)
+    const baseLow  = nearS ? nearS.price : p - atr;
+    const baseHigh = nearR ? nearR.price : p + atr;
+    baseLabel = `${fmtP(baseLow)}–${fmtP(baseHigh)}`;
   } else {
-    bullTarget    = p * 1.12;
-    bearTarget    = p * 0.88;
-    baseRangeLow  = p * 0.95;
-    baseRangeHigh = p * 1.05;
-    bullLabel     = fmtP(bullTarget);
-    bearLabel     = fmtP(bearTarget);
-    baseLabel     = `${fmtP(baseRangeLow)}–${fmtP(baseRangeHigh)}`;
+    bullLabel = fmtP(p * 1.12);
+    bearLabel = fmtP(p * 0.88);
+    baseLabel = `${fmtP(p * 0.95)}–${fmtP(p * 1.05)}`;
   }
 
   return [
@@ -1237,7 +1282,7 @@ async function runOutlook(bot, chatId) {
     { parse_mode: 'HTML' }
   );
 
-  const [fg, global, btc, lsr, oi, funding, polyScore, events, btcCandles] = await Promise.all([
+  const [fg, global, btc, lsr, oi, funding, polyScore, events, c4h, d1, w1] = await Promise.all([
     fetchFearGreed(),
     fetchGlobal(),
     fetchBtcData(),
@@ -1246,12 +1291,14 @@ async function runOutlook(bot, chatId) {
     fetchBtcFunding(),
     fetchPolyScore(),
     fetchUpcomingEvents(),
-    fetchBtcKlines()
+    fetchBtcKlines4h(),
+    fetchBtcKlinesDaily(),
+    fetchBtcKlinesWeekly()
   ]);
 
   const { score, signals, bullCount, bearCount } = computeBiasScore({ fg, global, btc, lsr, oi, funding, polyScore });
   const cycleInfo = detectCyclePhase({ fg, global, score });
-  const scenarios = buildScenarios({ score, btc, btcCandles });
+  const scenarios = buildScenarios({ score, btc, btcCandles: { c4h, d1, w1 } });
   const biasLabel = getBiasLabel(score);
 
   const narrative = await generateNarrative({
@@ -1287,7 +1334,7 @@ async function runOutlookMacro(bot, chatId) {
 async function runOutlookScenario(bot, chatId) {
   await bot.sendMessage(chatId, `📐 <b>Scenario Analysis</b>\nMenghitung skenario...`, { parse_mode: 'HTML' });
 
-  const [fg, global, btc, lsr, oi, funding, polyScore, btcCandles] = await Promise.all([
+  const [fg, global, btc, lsr, oi, funding, polyScore, c4h, d1, w1] = await Promise.all([
     fetchFearGreed(),
     fetchGlobal(),
     fetchBtcData(),
@@ -1295,11 +1342,13 @@ async function runOutlookScenario(bot, chatId) {
     fetchBtcOI(),
     fetchBtcFunding(),
     fetchPolyScore(),
-    fetchBtcKlines()
+    fetchBtcKlines4h(),
+    fetchBtcKlinesDaily(),
+    fetchBtcKlinesWeekly()
   ]);
 
   const { score } = computeBiasScore({ fg, global, btc, lsr, oi, funding, polyScore });
-  const scenarios = buildScenarios({ score, btc, btcCandles });
+  const scenarios = buildScenarios({ score, btc, btcCandles: { c4h, d1, w1 } });
 
   const report = buildScenarioReport({ score, scenarios, btc, fg });
   await bot.sendMessage(chatId, report, { parse_mode: 'HTML' });
