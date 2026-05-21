@@ -224,18 +224,29 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
   const nearestResistance = keyLevels.filter(l => l.type === 'RESISTANCE' && l.price > price).sort((a, b) => a.price - b.price)[0] || null;
 
   // Fibonacci Retracement from HTF swing structure
+  // Pair swing high & low from the same impulse move (last two pivots of different types)
   let fibLevels = [], fibNearLevel = null, fibBullish = false;
   let fibSwingLow = null, fibSwingHigh = null;
   if (htfStruct.highs.length >= 1 && htfStruct.lows.length >= 1) {
-    const recentHigh = htfStruct.highs[htfStruct.highs.length - 1];
-    const recentLow  = htfStruct.lows[htfStruct.lows.length - 1];
-    fibSwingLow  = recentLow.price;
-    fibSwingHigh = recentHigh.price;
-    // low before high = bullish move (retracement = support zones)
-    fibBullish = recentLow.idx < recentHigh.idx;
-    fibLevels  = calcFibLevels(fibSwingLow, fibSwingHigh);
-    // 0.8% tolerance — fib zones are conceptual, not exact
-    fibNearLevel = fibLevels.find(f => Math.abs(price - f.price) / price < 0.008);
+    const allPivots = [
+      ...htfStruct.highs.map(h => ({ ...h, type: 'HIGH' })),
+      ...htfStruct.lows.map(l => ({ ...l, type: 'LOW' })),
+    ].sort((a, b) => a.idx - b.idx);
+
+    const p2 = allPivots[allPivots.length - 1];
+    let p1 = null;
+    for (let i = allPivots.length - 2; i >= 0; i--) {
+      if (allPivots[i].type !== p2.type) { p1 = allPivots[i]; break; }
+    }
+
+    if (p1 && p2) {
+      fibSwingLow  = p1.type === 'LOW'  ? p1.price : p2.price;
+      fibSwingHigh = p1.type === 'HIGH' ? p1.price : p2.price;
+      fibBullish   = p1.type === 'LOW';
+      fibLevels    = calcFibLevels(fibSwingLow, fibSwingHigh);
+      // 0.8% tolerance — fib zones are conceptual, not exact
+      fibNearLevel = fibLevels.find(f => Math.abs(price - f.price) / price < 0.008);
+    }
   }
 
   // Tier 3 — structural additions
