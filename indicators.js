@@ -198,16 +198,37 @@ function findKeyLevels(candles, count = 5) {
 }
 
 // ── RSI DIVERGENCE ───────────────────────────────────────────────────────────
+// Pivot-based: compares RSI at actual swing highs/lows, not just endpoints.
+// Bullish div: price makes lower low but RSI makes higher low → hidden buying.
+// Bearish div: price makes higher high but RSI makes lower high → hidden selling.
 function detectDivergence(candles, rsi) {
-  if (rsi.length < 10) return null;
-  const priceSlice = candles.slice(-10).map(c => c.close);
-  const rsiSlice = rsi.slice(-10);
-  const priceFalling = priceSlice[9] < priceSlice[0];
-  const priceRising  = priceSlice[9] > priceSlice[0];
-  const rsiFalling   = rsiSlice[9] < rsiSlice[0];
-  const rsiRising    = rsiSlice[9] > rsiSlice[0];
-  if (priceFalling && rsiRising)  return 'BULLISH_DIVERGENCE';
-  if (priceRising  && rsiFalling) return 'BEARISH_DIVERGENCE';
+  if (candles.length < 20 || rsi.length < 20) return null;
+  const slice    = candles.slice(-35);
+  const rsiSlice = rsi.slice(-35);
+  const n = slice.length;
+
+  const pivotLows = [], pivotHighs = [];
+  for (let i = 2; i < n - 2; i++) {
+    if (slice[i].low  < slice[i-1].low  && slice[i].low  < slice[i-2].low  &&
+        slice[i].low  < slice[i+1].low  && slice[i].low  < slice[i+2].low)
+      pivotLows.push({ price: slice[i].low,  rsi: rsiSlice[i] });
+    if (slice[i].high > slice[i-1].high && slice[i].high > slice[i-2].high &&
+        slice[i].high > slice[i+1].high && slice[i].high > slice[i+2].high)
+      pivotHighs.push({ price: slice[i].high, rsi: rsiSlice[i] });
+  }
+
+  // Bullish: price LL but RSI HL
+  if (pivotLows.length >= 2) {
+    const prev = pivotLows[pivotLows.length - 2];
+    const curr = pivotLows[pivotLows.length - 1];
+    if (curr.price < prev.price && curr.rsi > prev.rsi) return 'BULLISH_DIVERGENCE';
+  }
+  // Bearish: price HH but RSI LH
+  if (pivotHighs.length >= 2) {
+    const prev = pivotHighs[pivotHighs.length - 2];
+    const curr = pivotHighs[pivotHighs.length - 1];
+    if (curr.price > prev.price && curr.rsi < prev.rsi) return 'BEARISH_DIVERGENCE';
+  }
   return null;
 }
 

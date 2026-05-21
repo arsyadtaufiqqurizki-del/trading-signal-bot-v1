@@ -316,11 +316,11 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
   if (ltfChoch === 'BULLISH_CHOCH') { longScore  += 2; longFactors.push('Bullish CHoCH — Structure Shift 🔄'); }
   if (ltfChoch === 'BEARISH_CHOCH') { shortScore += 2; shortFactors.push('Bearish CHoCH — Structure Shift 🔄'); }
 
-  // 6. Volume spike — directional (bullish candle = long pressure, bearish = short pressure)
+  // 6. Volume spike — direction from CVD delta of the spike candle, not candle color
   if (ltfVolume) {
-    const lastLtf = ltfCandles[ltfCandles.length - 1];
-    if (lastLtf.close > lastLtf.open) { longScore  += 2; longFactors.push('Bullish Volume Spike ⚡'); }
-    else                               { shortScore += 2; shortFactors.push('Bearish Volume Spike ⚡'); }
+    const lastDelta = ltfCVD[ltfCVD.length - 1].delta;
+    if (lastDelta > 0) { longScore  += 2; longFactors.push('Bullish Volume Spike ⚡'); }
+    else               { shortScore += 2; shortFactors.push('Bearish Volume Spike ⚡'); }
   } else if (pair.tier >= 3) {
     longScore  -= 1;
     shortScore -= 1;
