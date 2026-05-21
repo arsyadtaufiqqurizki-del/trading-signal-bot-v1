@@ -224,8 +224,8 @@ function computeBiasScore({ fg, global, btc, lsr, oi, funding, polyScore }) {
 
   // Stablecoin dominance (weight ±1 — high stablecoin = fear/sidelines)
   if (global?.stableDom != null) {
-    if      (global.stableDom > 14) { score -= 1;   signals.push({ icon: '🔴', label: `Stablecoin Dom ${fmt(global.stableDom, 1)}% — banyak capital di sidelines`, type: 'bear' }); }
-    else if (global.stableDom > 10) { score -= 0.5; signals.push({ icon: '🟡', label: `Stablecoin Dom ${fmt(global.stableDom, 1)}% — sedikit elevated`, type: 'neutral' }); }
+    if      (global.stableDom > 16) { score -= 1;   signals.push({ icon: '🔴', label: `Stablecoin Dom ${fmt(global.stableDom, 1)}% — banyak capital di sidelines`, type: 'bear' }); }
+    else if (global.stableDom > 12) { score -= 0.5; signals.push({ icon: '🟡', label: `Stablecoin Dom ${fmt(global.stableDom, 1)}% — sedikit elevated`, type: 'neutral' }); }
     else                            { score += 0.5; signals.push({ icon: '🟢', label: `Stablecoin Dom ${fmt(global.stableDom, 1)}% — capital sudah deployed`, type: 'bull' }); }
   }
 
@@ -253,6 +253,15 @@ function computeBiasScore({ fg, global, btc, lsr, oi, funding, polyScore }) {
     else if (polyScore <= -0.35) { score -= 2;   signals.push({ icon: '🔴', label: `Polymarket ${fmt(polyScore, 2)} — prediksi global sangat bearish`, type: 'bear' }); }
     else if (polyScore <= -0.10) { score -= 1;   signals.push({ icon: '🔴', label: `Polymarket ${fmt(polyScore, 2)} — prediksi bearish moderat`, type: 'bear' }); }
     else                         { score += 0;   signals.push({ icon: '🟡', label: `Polymarket ${fmt(polyScore, 2)} — pasar prediksi netral`, type: 'neutral' }); }
+  }
+
+  // OI Change BTC (weight ±1 — rising OI = fresh positioning, falling = deleveraging)
+  if (oi?.oiChange != null) {
+    if      (oi.oiChange > 5)  { score += 1;    signals.push({ icon: '🟢', label: `OI BTC +${fmt(oi.oiChange, 2)}% (1h) — fresh positioning masuk`, type: 'bull' }); }
+    else if (oi.oiChange > 2)  { score += 0.5;  signals.push({ icon: '🟡', label: `OI BTC +${fmt(oi.oiChange, 2)}% (1h) — OI bertambah moderat`, type: 'neutral' }); }
+    else if (oi.oiChange < -5) { score -= 1;    signals.push({ icon: '🔴', label: `OI BTC ${fmt(oi.oiChange, 2)}% (1h) — deleveraging/long liquidation`, type: 'bear' }); }
+    else if (oi.oiChange < -2) { score -= 0.5;  signals.push({ icon: '🟠', label: `OI BTC ${fmt(oi.oiChange, 2)}% (1h) — OI turun, waspada`, type: 'bear' }); }
+    else                        { score += 0;    signals.push({ icon: '🟡', label: `OI BTC ${fmt(oi.oiChange, 2)}% (1h) — OI stabil`, type: 'neutral' }); }
   }
 
   score = Math.max(-10, Math.min(10, Math.round(score * 10) / 10));
@@ -915,9 +924,14 @@ function fetchPairOIChange(symbol) {
 
 // ─── Pair Bias Score ──────────────────────────────────────────────────────────
 
-function computePairBiasScore({ htfBias, ltfStruct, ltfBos, ltfRsi, ltfAdx, execTrend, funding, lsr, change24h, btcBias4h, btcBias1h }) {
+function computePairBiasScore({ dailyBias, htfBias, ltfStruct, ltfBos, ltfRsi, ltfAdx, execTrend, funding, lsr, change24h, btcBias4h, btcBias1h }) {
   let score = 0;
   const signals = [];
+
+  // Daily bias (weight ±2.5 — highest authority timeframe)
+  if      (dailyBias === 'BULLISH') { score += 2.5; signals.push({ icon: '🟢', label: 'Daily Bullish — trend utama ke atas', type: 'bull' }); }
+  else if (dailyBias === 'BEARISH') { score -= 2.5; signals.push({ icon: '🔴', label: 'Daily Bearish — trend utama ke bawah', type: 'bear' }); }
+  else                              { score += 0;   signals.push({ icon: '🟡', label: 'Daily Neutral — belum ada arah jelas di TF harian', type: 'neutral' }); }
 
   // BTC macro correlation (weight ±2.5)
   if      (btcBias4h === 'BULLISH') { score += 1.5; signals.push({ icon: '🟢', label: 'BTC 4H Bullish — macro supportive', type: 'bull' }); }
@@ -926,9 +940,9 @@ function computePairBiasScore({ htfBias, ltfStruct, ltfBos, ltfRsi, ltfAdx, exec
   if      (btcBias1h === 'BULLISH') { score += 1;   signals.push({ icon: '🟢', label: 'BTC 1H Bullish — intraday momentum', type: 'bull' }); }
   else if (btcBias1h === 'BEARISH') { score -= 1;   signals.push({ icon: '🔴', label: 'BTC 1H Bearish — intraday tekanan', type: 'bear' }); }
 
-  // 4H structure bias (weight ±2)
-  if      (htfBias === 'BULLISH') { score += 2;   signals.push({ icon: '🟢', label: '4H Struktur Bullish — trend jangka menengah naik', type: 'bull' }); }
-  else if (htfBias === 'BEARISH') { score -= 2;   signals.push({ icon: '🔴', label: '4H Struktur Bearish — trend jangka menengah turun', type: 'bear' }); }
+  // 4H structure bias (weight ±1.5 — medium timeframe)
+  if      (htfBias === 'BULLISH') { score += 1.5; signals.push({ icon: '🟢', label: '4H Struktur Bullish — trend jangka menengah naik', type: 'bull' }); }
+  else if (htfBias === 'BEARISH') { score -= 1.5; signals.push({ icon: '🔴', label: '4H Struktur Bearish — trend jangka menengah turun', type: 'bear' }); }
   else                            { score += 0;   signals.push({ icon: '🟡', label: '4H Struktur Ranging — belum ada arah jelas', type: 'neutral' }); }
 
   // 1H trend (weight ±1.5)
@@ -985,7 +999,7 @@ function computePairBiasScore({ htfBias, ltfStruct, ltfBos, ltfRsi, ltfAdx, exec
 
 // ─── Pair Scenarios ───────────────────────────────────────────────────────────
 
-function buildPairScenarios({ score, price }) {
+function buildPairScenarios({ score, price, candles, keyLevels }) {
   let bullProb, baseProb, bearProb;
   if      (score >= 6)  { bullProb = 55; baseProb = 33; bearProb = 12; }
   else if (score >= 3)  { bullProb = 40; baseProb = 42; bearProb = 18; }
@@ -998,22 +1012,68 @@ function buildPairScenarios({ score, price }) {
     ? '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec })
     : 'N/A';
 
+  let bullLabel = '', bearLabel = '', baseLabel = '';
+
+  if (candles && candles.length >= 50 && price > 0) {
+    const { calcATR } = require('./indicators');
+    const atr = calcATR(candles, 14);
+
+    const scored = (keyLevels || []).map(l => ({ ...l, score: l.touches || 1 }));
+
+    const resistances = scored
+      .filter(l => l.type === 'RESISTANCE' && l.price > price && l.price < price * 1.4)
+      .sort((a, b) => {
+        const distA = (a.price - price) / price;
+        const distB = (b.price - price) / price;
+        if (Math.abs(distA - distB) > 0.02) return distA - distB;
+        return b.score - a.score;
+      });
+
+    const supports = scored
+      .filter(l => l.type === 'SUPPORT' && l.price < price && l.price > price * 0.6)
+      .sort((a, b) => {
+        const distA = (price - a.price) / price;
+        const distB = (price - b.price) / price;
+        if (Math.abs(distA - distB) > 0.02) return distA - distB;
+        return b.score - a.score;
+      });
+
+    const nearR = resistances[0];
+    const nearS = supports[0];
+
+    bullLabel = nearR
+      ? `R ${nearR.strength === 'STRONG' ? 'STRONG' : 'MEDIUM'} — ${fmtP(nearR.price)}`
+      : `ATR×3 — ${fmtP(price + atr * 3)}`;
+
+    bearLabel = nearS
+      ? `S ${nearS.strength === 'STRONG' ? 'STRONG' : 'MEDIUM'} — ${fmtP(nearS.price)}`
+      : `ATR×3 — ${fmtP(price - atr * 3)}`;
+
+    const baseLow  = nearS ? nearS.price : price - atr;
+    const baseHigh = nearR ? nearR.price : price + atr;
+    baseLabel = `${fmtP(baseLow)}–${fmtP(baseHigh)}`;
+  } else {
+    bullLabel = fmtP(price * 1.15);
+    bearLabel = fmtP(price * 0.85);
+    baseLabel = `${fmtP(price * 0.95)}–${fmtP(price * 1.05)}`;
+  }
+
   return [
     {
       emoji: '🐂', label: 'BULL CASE', prob: bullProb,
-      target:    price > 0 ? `Rally ke ${fmtP(price * 1.15)}` : 'Breakout ke resistance baru',
+      target:    price > 0 ? `Rally ke ${bullLabel}` : 'Breakout ke resistance baru',
       condition: score >= 3 ? 'Momentum berlanjut, BTC support, volume naik' : 'Butuh catalyst: BTC pump atau news positif sektoral',
       action:    'Long di support kuat, TP bertahap, SL di bawah struktur'
     },
     {
       emoji: '📊', label: 'BASE CASE', prob: baseProb,
-      target:    price > 0 ? `Konsolidasi ${fmtP(price * 0.95)}–${fmtP(price * 1.05)}` : 'Ranging di level saat ini',
+      target:    price > 0 ? `Konsolidasi ${baseLabel}` : 'Ranging di level saat ini',
       condition: 'Market menunggu direction dari BTC atau data macro berikutnya',
       action:    'Scalp di batas range, ukuran posisi kecil'
     },
     {
       emoji: '🐻', label: 'BEAR CASE', prob: bearProb,
-      target:    price > 0 ? `Koreksi ke ${fmtP(price * 0.85)}` : 'Retest support major',
+      target:    price > 0 ? `Koreksi ke ${bearLabel}` : 'Retest support major',
       condition: score <= -3 ? 'Macro bearish, BTC dump, atau liquidation cascade' : 'Trigger: BTC breakdown atau bad news sektoral',
       action:    'Hindari buy, pasang SL ketat pada posisi open'
     }
@@ -1022,7 +1082,7 @@ function buildPairScenarios({ score, price }) {
 
 // ─── Pair AI Narrative ────────────────────────────────────────────────────────
 
-async function generatePairNarrative({ pairName, score, biasLabel, price, change24h, htfBias, ltfTrend, ltfRsi, ltfAdx, lsr, funding, btcBias4h, nearResistance, nearSupport }) {
+async function generatePairNarrative({ pairName, score, biasLabel, price, change24h, dailyBias, htfBias, ltfTrend, ltfRsi, ltfAdx, lsr, funding, btcBias4h, nearResistance, nearSupport }) {
   if (!genAI) return null;
   try {
     const model  = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
@@ -1031,7 +1091,7 @@ async function generatePairNarrative({ pairName, score, biasLabel, price, change
 Data:
 - Harga: $${price?.toLocaleString('en-US') ?? 'N/A'} | 24h: ${change24h != null ? pct(change24h) : 'N/A'}
 - Bias Score: ${score > 0 ? '+' : ''}${score}/10 (${biasLabel})
-- 4H Bias: ${htfBias} | 1H Trend: ${ltfTrend}
+- Daily Bias: ${dailyBias} | 4H Bias: ${htfBias} | 1H Trend: ${ltfTrend}
 - RSI 1H: ${ltfRsi != null ? fmt(ltfRsi, 1) : 'N/A'} | ADX 1H: ${ltfAdx != null ? fmt(ltfAdx, 1) : 'N/A'}
 - BTC 4H: ${btcBias4h} | LSR: ${lsr ? fmt(lsr.ratio, 2) : 'N/A'}
 - Funding: ${funding != null ? fmt(funding, 4) + '%' : 'N/A'}
@@ -1046,7 +1106,7 @@ Fokus: bias arah pair ini, level kritis yang perlu diperhatikan, satu advice kon
 
 // ─── Pair Report Builder ──────────────────────────────────────────────────────
 
-function buildPairReport({ pairName, score, signals, scenarios, price, change24h, volume, htfBias, ltfStruct, ltfBos, ltfRsi, ltfAdx, execTrend, lsr, oi, funding, keyLevels, bullCount, bearCount, btcBias4h, narrative }) {
+function buildPairReport({ pairName, score, signals, scenarios, price, change24h, volume, dailyBias, htfBias, ltfStruct, ltfBos, ltfRsi, ltfAdx, execTrend, lsr, oi, funding, keyLevels, bullCount, bearCount, btcBias4h, narrative }) {
   const dateStr = new Date().toLocaleString('id-ID', {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Jakarta'
   });
@@ -1090,9 +1150,10 @@ function buildPairReport({ pairName, score, signals, scenarios, price, change24h
   r += `Vol 24h : <b>${volStr}</b>\n\n`;
 
   r += `<b>MULTI-TIMEFRAME ANALYSIS</b>\n`;
-  r += `4H Bias  : ${biasIcon(htfBias)} <b>${htfBias}</b>`;
+  r += `Daily    : ${biasIcon(dailyBias)} <b>${dailyBias}</b>`;
   if (btcBias4h !== 'NEUTRAL') r += `  |  BTC 4H: ${biasIcon(btcBias4h)} ${btcBias4h}`;
   r += '\n';
+  r += `4H Bias  : ${biasIcon(htfBias)} <b>${htfBias}</b>\n`;
   r += `1H Trend : ${trendIcon(ltfStruct?.trend)} <b>${ltfStruct?.trend ?? 'N/A'}</b>`;
   if (ltfBos) r += `  |  BOS: ${ltfBos === 'BULLISH_BOS' ? '🟢 BULL' : '🔴 BEAR'}`;
   r += '\n';
@@ -1165,10 +1226,11 @@ async function runOutlookPair(bot, chatId, keyword) {
     const { getKlines, getTicker, getFundingRate }                   = require('./binance');
     const { calcEMA, calcRSI, calcADX, detectStructure, detectBOS, findKeyLevels } = require('./indicators');
 
-    const [htfCandles, ltfCandles, execCandles, btcHtfCandles, btcLtfCandles, ticker, funding, pairLsr, pairOi] = await Promise.all([
+    const [htfCandles, ltfCandles, execCandles, dailyCandles, btcHtfCandles, btcLtfCandles, ticker, funding, pairLsr, pairOi] = await Promise.all([
       cached(`outlook_klines_${symbol}_4h`,   10 * 60_000, () => getKlines(symbol,    '4h',  200)),
       cached(`outlook_klines_${symbol}_1h`,    3 * 60_000, () => getKlines(symbol,    '1h',  200)),
       cached(`outlook_klines_${symbol}_15m`,   2 * 60_000, () => getKlines(symbol,    '15m', 100)),
+      cached(`outlook_klines_${symbol}_1d`,   15 * 60_000, () => getKlines(symbol,    '1d',  200)),
       cached('outlook_klines_BTCUSDT_4h',     10 * 60_000, () => getKlines('BTCUSDT', '4h',  100)),
       cached('outlook_klines_BTCUSDT_1h',      3 * 60_000, () => getKlines('BTCUSDT', '1h',  100)),
       cached(`outlook_ticker_${symbol}`,        1 * 60_000, () => getTicker(symbol)),
@@ -1209,6 +1271,19 @@ async function runOutlookPair(bot, chatId, keyword) {
     if (curHtfE50 > curHtfE200 && htfStruct.trend !== 'DOWNTREND') htfBias = 'BULLISH';
     if (curHtfE50 < curHtfE200 && htfStruct.trend !== 'UPTREND')   htfBias = 'BEARISH';
 
+    // ── Daily bias ──
+    let dailyBias = 'NEUTRAL';
+    if (dailyCandles && dailyCandles.length >= 50) {
+      const dailyCloses = dailyCandles.map(c => c.close);
+      const dailyEma50  = calcEMA(dailyCloses, 50);
+      const dailyEma200 = calcEMA(dailyCloses, 200);
+      const dailyStruct = detectStructure(dailyCandles);
+      const d50  = dailyEma50[dailyEma50.length - 1];
+      const d200 = dailyEma200[dailyEma200.length - 1];
+      if (d50 > d200 && dailyStruct.trend !== 'DOWNTREND') dailyBias = 'BULLISH';
+      if (d50 < d200 && dailyStruct.trend !== 'UPTREND')   dailyBias = 'BEARISH';
+    }
+
     // ── BTC correlation ──
     const btcHtfCloses = btcHtfCandles.map(c => c.close);
     const btcHtfE50    = calcEMA(btcHtfCloses, 50);
@@ -1225,7 +1300,7 @@ async function runOutlookPair(bot, chatId, keyword) {
 
     // ── Compute bias ──
     const { score, signals, bullCount, bearCount } = computePairBiasScore({
-      htfBias, ltfStruct, ltfBos,
+      dailyBias, htfBias, ltfStruct, ltfBos,
       ltfRsi, ltfAdx: ltfAdxVal,
       execTrend: execStruct.trend,
       funding, lsr: pairLsr,
@@ -1234,7 +1309,7 @@ async function runOutlookPair(bot, chatId, keyword) {
     });
 
     const biasLabel = getBiasLabel(score);
-    const scenarios = buildPairScenarios({ score, price });
+    const scenarios = buildPairScenarios({ score, price, candles: htfCandles, keyLevels });
 
     // Nearest R/S for narrative
     const dec  = price >= 1000 ? 1 : price >= 1 ? 4 : 6;
@@ -1245,7 +1320,7 @@ async function runOutlookPair(bot, chatId, keyword) {
     const narrative = await generatePairNarrative({
       pairName, score, biasLabel, price,
       change24h: ticker.change24h,
-      htfBias, ltfTrend: ltfStruct.trend,
+      dailyBias, htfBias, ltfTrend: ltfStruct.trend,
       ltfRsi, ltfAdx: ltfAdxVal,
       lsr: pairLsr, funding, btcBias4h,
       nearResistance: nearR ? rFmt(nearR) : null,
@@ -1255,7 +1330,7 @@ async function runOutlookPair(bot, chatId, keyword) {
     const report = buildPairReport({
       pairName, score, signals, scenarios,
       price, change24h: ticker.change24h, volume: ticker.volume,
-      htfBias, ltfStruct, ltfBos,
+      dailyBias, htfBias, ltfStruct, ltfBos,
       ltfRsi, ltfAdx: ltfAdxVal,
       execTrend: execStruct.trend,
       lsr: pairLsr, oi: pairOi, funding,
