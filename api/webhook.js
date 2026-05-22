@@ -71,6 +71,7 @@ module.exports = async (req, res) => {
           `🎯 /poly — <b>Polymarket: sinyal dari prediction market global</b>\n` +
           `🔐 /crypto — <b>Dampak berita ekonomi ke market</b>\n` +
           `📰 /news — Berita market &amp; crypto terbaru\n` +
+          `📡 /blom — <b>Bloomberg Intelligence: berita keuangan global terkini</b>\n` +
           `📈 /trend — <b>Analisis Tren Sosmed</b>\n\n` +
           `<b>🏦 Stock Sub-commands:</b>\n` +
           `📊 /stock BBCA — Analisis teknikal saham spesifik\n` +
@@ -494,6 +495,28 @@ module.exports = async (req, res) => {
         const { getNewsData } = require('../news');
         const newsMessage = await getNewsData();
         await bot.sendMessage(chatId, newsMessage, { parse_mode: 'HTML', disable_web_page_preview: true });
+      } else if (text.startsWith('/blom')) {
+        const args = text.trim().split(/\s+/);
+        const sub  = args[1]?.toLowerCase();
+        const validSubs = ['markets', 'economy', 'crypto', 'stocks'];
+
+        if (sub && !validSubs.includes(sub)) {
+          await bot.sendMessage(chatId,
+            `❓ <b>Sub-command tidak valid.</b>\n\nGunakan:\n` +
+            `• <code>/blom</code> — Overview semua berita keuangan global\n` +
+            `• <code>/blom markets</code> — Berita pasar &amp; saham\n` +
+            `• <code>/blom economy</code> — Makroekonomi global\n` +
+            `• <code>/blom crypto</code> — Crypto &amp; digital assets\n` +
+            `• <code>/blom stocks</code> — Saham &amp; ekuitas`,
+            { parse_mode: 'HTML' }
+          );
+        } else if (sub && validSubs.includes(sub)) {
+          const { runBloombergCategory } = require('../bloomberg');
+          await runBloombergCategory(bot, chatId, sub);
+        } else {
+          const { runBloombergOverview } = require('../bloomberg');
+          await runBloombergOverview(bot, chatId);
+        }
       } else if (text.startsWith('/result')) {
         const parts = text.trim().split(/\s+/);
         if (parts.length < 4) {
