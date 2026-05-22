@@ -72,7 +72,9 @@ module.exports = async (req, res) => {
           `🔐 /crypto — <b>Dampak berita ekonomi ke market</b>\n` +
           `📰 /news — Berita market &amp; crypto terbaru\n` +
           `📡 /blom — <b>Bloomberg Intelligence: berita keuangan global terkini</b>\n` +
-          `📈 /trend — <b>Analisis Tren Sosmed</b>\n\n` +
+          `📈 /trend — <b>Analisis Tren Sosmed Indonesia</b>\n` +
+          `📈 /trend hot — <b>Hanya topik yang sedang naik</b>\n` +
+          `📈 /trend compare [cat1] [cat2] — <b>Bandingkan 2 kategori</b>\n\n` +
           `<b>🎬 Content Creator (/create):</b>\n` +
           `🎬 /create &lt;keyword&gt; — 3 angle konten viral (default)\n` +
           `🎵 /create tiktok &lt;kw&gt; — Script khusus TikTok\n` +
@@ -283,150 +285,274 @@ module.exports = async (req, res) => {
         }
       } else if (text.startsWith('/trend')) {
         const args = text.trim().split(/\s+/);
-        const category = args[1] && !args[1].startsWith('/') ? args[1].toLowerCase() : null;
+        const subCmd = args[1] ? args[1].toLowerCase() : null;
 
         const validCategories = ['marketing', 'ai', 'ecommerce', 'social', 'tools'];
-        if (category && !validCategories.includes(category)) {
-          await bot.sendMessage(chatId,
-            `❓ <b>Kategori tidak valid.</b>\n\nKategori tersedia:\n` +
-            `• <code>/trend</code> — Semua tren\n` +
-            `• <code>/trend marketing</code> — Digital Marketing, SEO, KOL, dll\n` +
-            `• <code>/trend ai</code> — AI, ChatGPT, Gemini\n` +
-            `• <code>/trend ecommerce</code> — Shopee, Tokopedia, Lazada\n` +
-            `• <code>/trend social</code> — TikTok, Instagram, Threads\n` +
-            `• <code>/trend tools</code> — Canva, Notion, Web3`,
-            { parse_mode: 'HTML' }
-          );
-        } else {
-          const categoryLabel = category ? ` [${category.toUpperCase()}]` : '';
-          await bot.sendMessage(chatId, `⏳ Sedang menganalisis tren${categoryLabel}...`);
+        const isHot     = subCmd === 'hot';
+        const isCompare = subCmd === 'compare';
+        const category  = (!isHot && !isCompare && subCmd && !subCmd.startsWith('/')) ? subCmd : null;
+
+        // ── /trend compare [cat1] [cat2] ────────────────────────────────────
+        if (isCompare) {
+          const cat1 = args[2] ? args[2].toLowerCase() : null;
+          const cat2 = args[3] ? args[3].toLowerCase() : null;
+          if (!cat1 || !cat2 || !validCategories.includes(cat1) || !validCategories.includes(cat2)) {
+            await bot.sendMessage(chatId,
+              `❓ <b>Format:</b> <code>/trend compare [kategori1] [kategori2]</code>\n\n` +
+              `Kategori valid: ${validCategories.map(c => `<code>${c}</code>`).join(', ')}\n\n` +
+              `Contoh: <code>/trend compare ai marketing</code>`,
+              { parse_mode: 'HTML' }
+            );
+          } else {
+            await bot.sendMessage(chatId, `⏳ Membandingkan tren <b>${cat1.toUpperCase()}</b> vs <b>${cat2.toUpperCase()}</b>...`, { parse_mode: 'HTML' });
+
+            const socialScanner = require('../social_scanner');
+            const trendAnalyzer = require('../trend_analyzer');
+
+            const kw1 = trendAnalyzer.getKeywordsByCategory(cat1);
+            const kw2 = trendAnalyzer.getKeywordsByCategory(cat2);
+            const allKw = [...new Set([...kw1, ...kw2])];
+            const articles = await socialScanner.scanKeywords(allKw);
+
+            const { trends: trends1 } = trendAnalyzer.analyze(articles, cat1);
+            const { trends: trends2 } = trendAnalyzer.analyze(articles, cat2);
+
+            const topScore1 = trends1.length ? trends1[0].score : 0;
+            const topScore2 = trends2.length ? trends2[0].score : 0;
+            const totalCount1 = trends1.reduce((s, t) => s + t.count, 0);
+            const totalCount2 = trends2.reduce((s, t) => s + t.count, 0);
+            const winner = topScore1 > topScore2 ? cat1.toUpperCase() : cat2.toUpperCase();
+
+            const renderBar = (score) => trendAnalyzer.renderScoreBar(score);
+
+            let report = `<b>⚔️ TREND COMPARE</b>\n`;
+            report += `<code>${cat1.toUpperCase()}</code> vs <code>${cat2.toUpperCase()}</code>\n`;
+            report += `━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+
+            // Side A
+            report += `<b>🔵 ${cat1.toUpperCase()}</b>\n`;
+            report += `${renderBar(topScore1)}  ${topScore1}/100\n`;
+            report += `Artikel: <b>${totalCount1}</b> · Topik Aktif: <b>${trends1.length}</b>\n`;
+            if (trends1.length > 0) {
+              report += `\nTop 3:\n`;
+              trends1.slice(0, 3).forEach((t, i) => {
+                report += `${i + 1}. ${t.statusEmoji} <b>${t.keyword}</b>  <code>${t.score}/100</code>  ·  ${t.count} artikel\n`;
+              });
+            }
+            report += `\n`;
+
+            // Side B
+            report += `<b>🔴 ${cat2.toUpperCase()}</b>\n`;
+            report += `${renderBar(topScore2)}  ${topScore2}/100\n`;
+            report += `Artikel: <b>${totalCount2}</b> · Topik Aktif: <b>${trends2.length}</b>\n`;
+            if (trends2.length > 0) {
+              report += `\nTop 3:\n`;
+              trends2.slice(0, 3).forEach((t, i) => {
+                report += `${i + 1}. ${t.statusEmoji} <b>${t.keyword}</b>  <code>${t.score}/100</code>  ·  ${t.count} artikel\n`;
+              });
+            }
+            report += `\n`;
+
+            report += `━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+            report += `🏆 <b>Lebih Dominan: ${winner}</b>\n`;
+            report += `<i>Buat konten untuk tren teratas:\n`;
+            if (trends1.length) report += `/create ${trends1[0].keyword}\n`;
+            if (trends2.length) report += `/create ${trends2[0].keyword}</i>`;
+
+            await bot.sendMessage(chatId, report, { parse_mode: 'HTML', disable_web_page_preview: true });
+          }
+
+        // ── /trend hot ────────────────────────────────────────────────────────
+        } else if (isHot) {
+          await bot.sendMessage(chatId, `⏳ Mencari topik yang sedang <b>naik</b>...`, { parse_mode: 'HTML' });
 
           const socialScanner = require('../social_scanner');
           const trendAnalyzer = require('../trend_analyzer');
-          const keywords = trendAnalyzer.getKeywordsByCategory(category);
+          const keywords = trendAnalyzer.getKeywordsByCategory(null);
           const articles = await socialScanner.scanKeywords(keywords);
-          const { trends } = trendAnalyzer.analyze(articles, category);
+          const { trends } = trendAnalyzer.analyze(articles, null);
+          const hotTrends = trendAnalyzer.getHotTrends(trends);
 
-          if (trends.length === 0) {
-            await bot.sendMessage(chatId, `Tidak ditemukan lonjakan topik signifikan pada periode ini.`, { parse_mode: 'HTML' });
+          if (hotTrends.length === 0) {
+            await bot.sendMessage(chatId,
+              `📊 <b>Belum ada lonjakan tren baru</b>\n<i>Semua topik stabil atau belum ada data sesi sebelumnya untuk dibandingkan. Coba lagi dalam 1 jam.</i>`,
+              { parse_mode: 'HTML' }
+            );
           } else {
             const now = new Date();
-            const dateStr = now.toLocaleString('id-ID', {
-              weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
-            });
-            const timeStr = now.toLocaleString('id-ID', {
-              hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta'
-            });
+            const timeStr = now.toLocaleString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' });
 
-            const topTrends = trends.slice(0, 7);
-            const totalArticles = trends.reduce((s, t) => s + t.count, 0);
-            const topKw = topTrends[0];
-
-            const categoryScope = category
-              ? category.charAt(0).toUpperCase() + category.slice(1)
-              : 'Semua Kategori';
-
-            // --- Velocity helper ---
-            const velLabel = (v) => {
-              if (v === null || v === undefined) return '';
-              if (v > 0) return `  ↑ +${v} vs sesi lalu`;
-              if (v < 0) return `  ↓ ${v} vs sesi lalu`;
-              return '  → Stabil';
-            };
-
-            // --- Status label ---
-            const statusLabel = (s) => {
-              if (s === 'Sangat Viral') return 'VIRAL';
-              if (s === 'Sedang Tren') return 'TRENDING';
-              return 'NAIK';
-            };
-
-            // ── MASTHEAD ──
-            let report = `<b>TREND INTELLIGENCE</b>\n`;
-            report += `<i>Indonesia Digital Monitor · ${categoryScope}</i>\n`;
-            report += `━━━━━━━━━━━━━━━━━━━━━━━━\n`;
-            report += `${dateStr}  ·  ${timeStr} WIB\n`;
-            report += `Artikel dianalisis: <b>${totalArticles}</b> sumber\n\n`;
-
-            // ── EXECUTIVE SUMMARY ──
-            report += `<b>RINGKASAN</b>\n`;
-            report += `<i>${topTrends.length} topik terdeteksi aktif. `;
-            if (topKw.velocity !== null && topKw.velocity > 0) {
-              report += `Momentum tertinggi: <b>${topKw.keyword}</b> dengan akselerasi +${topKw.velocity} artikel dari sesi sebelumnya.</i>\n`;
-            } else {
-              report += `Topik paling dominan: <b>${topKw.keyword}</b> dengan ${topKw.count} artikel.</i>\n`;
-            }
+            let report = `<b>🔥 TOPIK SEDANG NAIK</b>\n`;
+            report += `<i>Velocity positif vs sesi sebelumnya · ${timeStr} WIB</i>\n`;
             report += `━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
 
-            // ── SECTION HELPER ──
-            const renderItem = (t, rank, compact = false) => {
-              const insight = trendAnalyzer.getInsight(t.keyword);
-              const vel = velLabel(t.velocity);
-              const status = statusLabel(t.status);
-              let block = '';
-
-              if (compact) {
-                block += `<b>No.${rank}  ${t.keyword.toUpperCase()}</b>\n`;
-                block += `<code>${status}</code>  ·  ${t.count} artikel${vel}\n`;
-                if (t.articles && t.articles.length > 0) {
-                  const art = t.articles[0];
-                  const pd = art.pubDate
-                    ? new Date(art.pubDate).toLocaleString('id-ID', { weekday: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
-                    : '—';
-                  block += `▸ <a href="${art.link}">${art.title}</a>\n`;
-                }
-                block += '\n';
-              } else {
-                block += `<b>No.${rank}  ${t.keyword.toUpperCase()}</b>\n`;
-                block += `<code>${status}</code>  ·  ${t.count} artikel${vel}\n\n`;
-                block += `<i>${insight}</i>\n`;
-                if (t.articles && t.articles.length > 0) {
-                  block += `\n<b>Berita Terpilih:</b>\n`;
-                  t.articles.slice(0, 2).forEach(art => {
-                    const pd = art.pubDate
-                      ? new Date(art.pubDate).toLocaleString('id-ID', { weekday: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
-                      : '—';
-                    block += `▸ <i>${pd}</i>\n`;
-                    block += `  "<a href="${art.link}">${art.title}</a>"\n`;
-                  });
-                }
-                block += '\n';
+            hotTrends.slice(0, 5).forEach((t, i) => {
+              const bar = trendAnalyzer.renderScoreBar(t.score);
+              report += `<b>${i + 1}. ${t.statusEmoji} ${t.keyword.toUpperCase()}</b>\n`;
+              report += `<code>${bar}</code>  <code>${t.score}/100</code>\n`;
+              report += `📈 Naik <b>+${t.velocity}</b> artikel  ·  Total: ${t.count} sumber\n`;
+              if (t.hashtags && t.hashtags.length) {
+                report += `<i>${t.hashtags.join(' ')}</i>\n`;
               }
-              return block;
-            };
+              if (t.articles && t.articles[0]) {
+                report += `▸ <a href="${t.articles[0].link}">${t.articles[0].title}</a>\n`;
+              }
+              report += `\n`;
+            });
 
-            // ── HEADLINE UTAMA (#1) ──
-            report += `<b>HEADLINE UTAMA</b>\n`;
-            report += `─────────────────────────\n`;
-            report += renderItem(topTrends[0], 1, false);
-
-            // ── TREN AKTIF (#2–#4) ──
-            if (topTrends.length > 1) {
-              report += `─────────────────────────\n`;
-              report += `<b>TREN AKTIF</b>\n`;
-              report += `─────────────────────────\n`;
-              topTrends.slice(1, 4).forEach((t, i) => {
-                report += renderItem(t, i + 2, false);
-              });
-            }
-
-            // ── DIPANTAU (#5–#7, compact) ──
-            if (topTrends.length > 4) {
-              report += `─────────────────────────\n`;
-              report += `<b>DIPANTAU</b>\n`;
-              report += `─────────────────────────\n`;
-              topTrends.slice(4).forEach((t, i) => {
-                report += renderItem(t, i + 5, true);
-              });
-            }
-
-            // ── FOOTER ──
             report += `━━━━━━━━━━━━━━━━━━━━━━━━\n`;
-            report += `Produksi konten untuk tren #1:\n`;
-            report += `<code>/create ${topKw.keyword}</code>\n\n`;
-            report += `<i>Filter laporan: /trend marketing · /trend ai · /trend ecommerce · /trend social · /trend tools</i>`;
+            report += `<code>/create ${hotTrends[0].keyword}</code> — Buat konten untuk tren #1`;
 
             await bot.sendMessage(chatId, report, { parse_mode: 'HTML', disable_web_page_preview: true });
+          }
+
+        // ── /trend [category?] — Main report ─────────────────────────────────
+        } else {
+          if (category && !validCategories.includes(category)) {
+            await bot.sendMessage(chatId,
+              `❓ <b>Kategori tidak valid.</b>\n\nKategori tersedia:\n` +
+              `• <code>/trend</code> — Semua tren\n` +
+              `• <code>/trend marketing</code> — Digital Marketing, SEO, KOL, dll\n` +
+              `• <code>/trend ai</code> — AI, ChatGPT, Gemini\n` +
+              `• <code>/trend ecommerce</code> — Shopee, Tokopedia, Lazada\n` +
+              `• <code>/trend social</code> — TikTok, Instagram, Threads\n` +
+              `• <code>/trend tools</code> — Canva, Notion, Web3\n` +
+              `• <code>/trend hot</code> — Hanya topik yang sedang naik\n` +
+              `• <code>/trend compare ai marketing</code> — Bandingkan 2 kategori`,
+              { parse_mode: 'HTML' }
+            );
+          } else {
+            const categoryLabel = category ? ` [${category.toUpperCase()}]` : '';
+            await bot.sendMessage(chatId, `⏳ Sedang menganalisis tren${categoryLabel}... <i>(multi-sumber: Google News + Detik + Kompas)</i>`, { parse_mode: 'HTML' });
+
+            const socialScanner = require('../social_scanner');
+            const trendAnalyzer = require('../trend_analyzer');
+            const keywords = trendAnalyzer.getKeywordsByCategory(category);
+            const articles  = await socialScanner.scanKeywords(keywords);
+            const { trends } = trendAnalyzer.analyze(articles, category);
+
+            if (trends.length === 0) {
+              await bot.sendMessage(chatId, `Tidak ditemukan lonjakan topik signifikan pada periode ini.`, { parse_mode: 'HTML' });
+            } else {
+              const now = new Date();
+              const dateStr = now.toLocaleString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+              const timeStr = now.toLocaleString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' });
+
+              const topTrends    = trends.slice(0, 7);
+              const totalArticles = trends.reduce((s, t) => s + t.count, 0);
+              const topKw        = topTrends[0];
+              const categoryScope = category
+                ? category.charAt(0).toUpperCase() + category.slice(1)
+                : 'Semua Kategori';
+
+              const velLabel = (v) => {
+                if (v === null || v === undefined) return '';
+                if (v > 0) return `  ↑ +${v} vs sesi lalu`;
+                if (v < 0) return `  ↓ ${v} vs sesi lalu`;
+                return '  → Stabil';
+              };
+
+              // ── MASTHEAD ──
+              let report = `<b>TREND INTELLIGENCE</b>\n`;
+              report += `<i>Indonesia Digital Monitor · ${categoryScope}</i>\n`;
+              report += `━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+              report += `${dateStr}  ·  ${timeStr} WIB\n`;
+              report += `Artikel dianalisis: <b>${totalArticles}</b> sumber\n\n`;
+
+              // ── TREND HEATMAP SCOREBOARD ──
+              report += `<b>📊 TREND SCORE HEATMAP</b>\n`;
+              topTrends.forEach(t => {
+                const bar = trendAnalyzer.renderScoreBar(t.score);
+                report += `${t.statusEmoji} <b>${t.keyword}</b>\n`;
+                report += `<code>${bar}</code>  <code>${t.score}/100</code>  · ${t.count} artikel${velLabel(t.velocity)}\n`;
+              });
+              report += `\n`;
+
+              // ── EXECUTIVE SUMMARY ──
+              report += `━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+              report += `<b>RINGKASAN</b>\n`;
+              report += `<i>${topTrends.length} topik terdeteksi aktif. `;
+              if (topKw.velocity !== null && topKw.velocity > 0) {
+                report += `Momentum tertinggi: <b>${topKw.keyword}</b> — akselerasi +${topKw.velocity} artikel dari sesi sebelumnya.</i>\n`;
+              } else {
+                report += `Topik paling dominan: <b>${topKw.keyword}</b> dengan score ${topKw.score}/100.</i>\n`;
+              }
+              report += `━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+
+              // ── HEADLINE UTAMA (#1) — with AI insight ──
+              report += `<b>HEADLINE UTAMA</b>\n`;
+              report += `─────────────────────────\n`;
+
+              // Fetch AI insight for top trend only (async, non-blocking for rest)
+              const topInsightPromise = trendAnalyzer.getAIInsight(topKw.keyword, topKw.articles);
+
+              const renderItem = (t, rank, insight, compact = false) => {
+                const vel = velLabel(t.velocity);
+                let block = '';
+                if (compact) {
+                  block += `<b>No.${rank}  ${t.statusEmoji} ${t.keyword.toUpperCase()}</b>\n`;
+                  block += `<code>${t.statusLabel}</code>  ·  ${t.count} artikel${vel}\n`;
+                  if (t.hashtags && t.hashtags.length) {
+                    block += `<i>${t.hashtags.join(' ')}</i>\n`;
+                  }
+                  if (t.articles && t.articles.length > 0) {
+                    block += `▸ <a href="${t.articles[0].link}">${t.articles[0].title}</a>\n`;
+                  }
+                  block += '\n';
+                } else {
+                  block += `<b>No.${rank}  ${t.statusEmoji} ${t.keyword.toUpperCase()}</b>\n`;
+                  block += `<code>${t.statusLabel}</code>  ·  Skor: <b>${t.score}/100</b>  ·  ${t.count} artikel${vel}\n\n`;
+                  block += `<i>${insight}</i>\n`;
+                  if (t.hashtags && t.hashtags.length) {
+                    block += `\n${t.hashtags.join(' ')}\n`;
+                  }
+                  if (t.articles && t.articles.length > 0) {
+                    block += `\n<b>Berita Terpilih:</b>\n`;
+                    t.articles.slice(0, 2).forEach(art => {
+                      const pd = art.pubDate
+                        ? new Date(art.pubDate).toLocaleString('id-ID', { weekday: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+                        : '—';
+                      block += `▸ <i>${pd}</i>  "<a href="${art.link}">${art.title}</a>"\n`;
+                    });
+                  }
+                  block += '\n';
+                }
+                return block;
+              };
+
+              // Await AI insight only for top trend
+              const topInsight = await topInsightPromise;
+              report += renderItem(topKw, 1, topInsight, false);
+
+              // ── TREN AKTIF (#2–#4) — static insight for speed ──
+              if (topTrends.length > 1) {
+                report += `─────────────────────────\n`;
+                report += `<b>TREN AKTIF</b>\n`;
+                report += `─────────────────────────\n`;
+                topTrends.slice(1, 4).forEach((t, i) => {
+                  const staticInsight = trendAnalyzer.getStaticInsight(t.keyword);
+                  report += renderItem(t, i + 2, staticInsight, false);
+                });
+              }
+
+              // ── DIPANTAU (#5–#7, compact) ──
+              if (topTrends.length > 4) {
+                report += `─────────────────────────\n`;
+                report += `<b>DIPANTAU</b>\n`;
+                report += `─────────────────────────\n`;
+                topTrends.slice(4).forEach((t, i) => {
+                  report += renderItem(t, i + 5, '', true);
+                });
+              }
+
+              // ── FOOTER ──
+              report += `━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+              report += `Produksi konten untuk tren #1:\n`;
+              report += `<code>/create ${topKw.keyword}</code>\n\n`;
+              report += `<i>Filter: /trend marketing · /trend ai · /trend ecommerce · /trend social · /trend tools · /trend hot</i>`;
+
+              await bot.sendMessage(chatId, report, { parse_mode: 'HTML', disable_web_page_preview: true });
+            }
           }
         }
       } else if (text.startsWith('/crypto')) {
