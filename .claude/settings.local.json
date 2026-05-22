@@ -1,0 +1,38 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\widia\\\\OneDrive\\\\Desktop\\\\Gemini\" -Recurse -File | ForEach-Object { $_.FullName })",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(git add *)",
+      "Bash(gh auth *)",
+      "Bash(gcloud --version)",
+      "Bash(curl *)",
+      "Bash(node -e \"require\\('./quant'\\)\")",
+      "Bash(node -e \"require\\('./api/webhook'\\)\")",
+      "Bash(node -e \"const m = require\\('./onchain'\\); console.log\\('Module loaded OK, exports:', Object.keys\\(m\\)\\);\")",
+      "Bash(node -e \"require\\('./api/webhook'\\); console.log\\('webhook.js loaded OK'\\);\")",
+      "Bash(node -e ' *)",
+      "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\widia\\\\OneDrive\\\\Desktop\\\\Gemini\" -Recurse -Directory | Select-Object -First 50 | ForEach-Object { $_.FullName })",
+      "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\widia\\\\OneDrive\\\\Desktop\\\\Gemini\" -Exclude \"node_modules\" | ForEach-Object { $_.FullName })",
+      "Bash(dir \"C:\\\\Users\\\\widia\\\\OneDrive\\\\Desktop\\\\Gemini\" /b *.js)",
+      "Bash(node -c polymarket.js)",
+      "Bash(node -e \"const p = require\\('./polymarket'\\); console.log\\('Exports:', Object.keys\\(p\\)\\);\")",
+      "Bash(git fetch *)",
+      "Bash(git pull *)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\widia\\\\OneDrive\\\\Desktop\\\\Gemini\" -Recurse -File)",
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "Bash(Sort-Object)",
+      "PowerShell(Get-ChildItem *)",
+      "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\widia\\\\OneDrive\\\\Desktop\\\\Gemini\" -File | Where-Object {$_.Extension -match '\\\\.\\(js|json|md\\)$'} | Select-Object -ExpandProperty FullName | Sort-Object)",
+      "Bash(git commit *)",
+      "PowerShell(Get-ChildItem \"C:\\\\Users\\\\widia\\\\OneDrive\\\\Desktop\\\\Gemini\\\\\" | Where-Object { $_.Extension -eq \".js\" -or $_.PSIsContainer } | Select-Object Name, PSIsContainer)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\widia\\\\OneDrive\\\\Desktop\\\\Gemini\" -Force)",
+      "Bash(Select-Object FullName, Mode)",
+      "Bash(Format-Table -AutoSize)",
+      "Bash(node -e \"const _yf = require\\('yahoo-finance2'\\); const yf = _yf.default || _yf; console.log\\('Import OK, type:', typeof yf.quote\\);\")",
+      "Bash(node --check stock.js)",
+      "Bash(node *)"
+    ]
+  }
+}

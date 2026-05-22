@@ -59,7 +59,7 @@ module.exports = async (req, res) => {
     try {
       if (text.startsWith('/start')) {
         await bot.sendMessage(chatId,
-          `Halo! Saya adalah <b>AI Trading Assistant</b> Anda.\n\nGunakan perintah berikut:\n\n` +
+          `Halo! Saya adalah <b>AI Trading &amp; Content Assistant</b> Anda.\n\nGunakan perintah berikut:\n\n` +
           `🔭 /outlook — <b>Market outlook 7-day: bias score, skenario &amp; kalender event</b>\n` +
           `🏦 /stock — <b>Outlook saham Indonesia: IHSG &amp; LQ45</b>\n` +
           `⚡ /fast — <b>Sinyal instan sekarang</b>\n` +
@@ -73,6 +73,25 @@ module.exports = async (req, res) => {
           `📰 /news — Berita market &amp; crypto terbaru\n` +
           `📡 /blom — <b>Bloomberg Intelligence: berita keuangan global terkini</b>\n` +
           `📈 /trend — <b>Analisis Tren Sosmed</b>\n\n` +
+          `<b>🎬 Content Creator (/create):</b>\n` +
+          `🎬 /create &lt;keyword&gt; — 3 angle konten viral (default)\n` +
+          `🎵 /create tiktok &lt;kw&gt; — Script khusus TikTok\n` +
+          `📸 /create ig &lt;kw&gt; — Caption &amp; Reels Instagram\n` +
+          `▶️ /create yt &lt;kw&gt; — Judul, thumbnail &amp; script YouTube\n` +
+          `🧵 /create thread &lt;kw&gt; — Viral Twitter/X Thread\n` +
+          `📧 /create email &lt;kw&gt; — Email marketing copy\n` +
+          `🪝 /create hook &lt;kw&gt; — 7 power hooks terbaik\n` +
+          `📝 /create script &lt;kw&gt; — Full video script 45 detik\n` +
+          `✍️ /create caption &lt;kw&gt; — 3 caption siap pakai + hashtag\n` +
+          `💡 /create ideas &lt;kw&gt; — 10 ide konten kreatif\n` +
+          `🔥 /create viral &lt;kw&gt; — Analisis formula viral\n` +
+          `📦 /create pack &lt;kw&gt; — Content Pack lengkap (6 section)\n` +
+          `👔 /create formal &lt;kw&gt; — Gaya profesional / B2B\n` +
+          `😎 /create santai &lt;kw&gt; — Gaya Gen Z casual\n` +
+          `💰 /create hard-sell &lt;kw&gt; — Copy jualan langsung\n` +
+          `📖 /create story &lt;kw&gt; — Format storytelling\n` +
+          `🎓 /create edukasi &lt;kw&gt; — Konten how-to &amp; edukatif\n` +
+          `⚔️ /create vs &lt;kw1&gt; &lt;kw2&gt; — Bandingkan 2 keyword\n\n` +
           `<b>🏦 Stock Sub-commands:</b>\n` +
           `📊 /stock BBCA — Analisis teknikal saham spesifik\n` +
           `<i>Semua kode saham IDX didukung: BBRI, TLKM, GOTO, dll</i>\n\n` +
@@ -462,32 +481,280 @@ module.exports = async (req, res) => {
           await bot.sendMessage(chatId, report, { parse_mode: 'HTML', disable_web_page_preview: true });
         }
       } else if (text.startsWith('/create')) {
-        const args = text.split(' ').slice(1).join(' ');
-        if (!args) {
-          await bot.sendMessage(chatId, '❓ <b>Keyword tidak ditemukan!</b>', { parse_mode: 'HTML' });
-        } else {
-          await bot.sendMessage(chatId, `⏳ Meracik script untuk <b>"${args}"</b>...`, { parse_mode: 'HTML' });
-          const contentGenerator = require('../content_generator');
-          const result = await contentGenerator.generateHooks(args);
+        const parts = text.trim().split(/\s+/);
+        // parts[0] = '/create', parts[1] = sub-command atau keyword, parts[2+] = keyword
+        const sub = parts[1]?.toLowerCase();
 
-          if (!result || !result.text) {
-            await bot.sendMessage(chatId, `❌ <b>Gagal meracik konten.</b>\nAI tidak memberikan respons untuk keyword tersebut. Coba gunakan keyword marketing yang lebih spesifik!`, { parse_mode: 'HTML' });
-            return;
+        // ── Daftar sub-commands yang dikenali ──
+        const PLATFORMS  = ['tiktok', 'ig', 'yt', 'thread', 'email'];
+        const MODES      = ['hook', 'script', 'caption', 'ideas', 'viral'];
+        const TONES      = ['formal', 'santai', 'hard-sell', 'story', 'edukasi'];
+        const SPECIALS   = ['pack', 'vs'];
+
+        const contentGenerator = require('../content_generator');
+
+        // ── Helper: deteksi & inject tren ──
+        const buildTrendCtx = (keyword) => contentGenerator.getTrendContext(keyword);
+
+        // ── Helper: kirim pesan panjang dengan split otomatis ──
+        const sendLong = async (txt) => {
+          const MAX = 4000;
+          if (txt.length <= MAX) {
+            await bot.sendMessage(chatId, txt, { parse_mode: 'HTML', disable_web_page_preview: true });
+          } else {
+            // split by section separator
+            const chunks = [];
+            let cur = '';
+            const lines = txt.split('\n');
+            for (const line of lines) {
+              if ((cur + '\n' + line).length > MAX) {
+                if (cur) chunks.push(cur.trim());
+                cur = line;
+              } else {
+                cur += (cur ? '\n' : '') + line;
+              }
+            }
+            if (cur) chunks.push(cur.trim());
+            for (const chunk of chunks) {
+              await bot.sendMessage(chatId, chunk, { parse_mode: 'HTML', disable_web_page_preview: true });
+            }
+          }
+        };
+
+        // ── Helper: format model label ──
+        const modelLabel = (model) => model ? model.split('/').pop() : 'AI';
+
+        // ── Platform emoji map ──
+        const platformMeta = {
+          tiktok: { emoji: '🎵', label: 'TikTok' },
+          ig:     { emoji: '📸', label: 'Instagram' },
+          yt:     { emoji: '▶️', label: 'YouTube' },
+          thread: { emoji: '🧵', label: 'Twitter/X Thread' },
+          email:  { emoji: '📧', label: 'Email Marketing' }
+        };
+        const modeMeta = {
+          hook:    { emoji: '🪝', label: 'Power Hooks' },
+          script:  { emoji: '📝', label: 'Full Script' },
+          caption: { emoji: '✍️', label: 'Caption Ready' },
+          ideas:   { emoji: '💡', label: '10 Ide Konten' },
+          viral:   { emoji: '🔥', label: 'Formula Viral' }
+        };
+        const toneMeta = {
+          formal:      { emoji: '👔', label: 'Formal & Profesional' },
+          santai:      { emoji: '😎', label: 'Santai Gen Z' },
+          'hard-sell': { emoji: '💰', label: 'Hard Sell' },
+          story:       { emoji: '📖', label: 'Storytelling' },
+          edukasi:     { emoji: '🎓', label: 'Edukatif' }
+        };
+
+        // ─────────────────────────────────────────────
+        // CASE: /create vs <kw1> <kw2>
+        // ─────────────────────────────────────────────
+        if (sub === 'vs') {
+          const kw1 = parts[2];
+          const kw2 = parts[3];
+          if (!kw1 || !kw2) {
+            await bot.sendMessage(chatId,
+              `❓ <b>Format salah!</b>\n\nGunakan:\n<code>/create vs [keyword1] [keyword2]</code>\n\nContoh:\n<code>/create vs tiktok instagram</code>\n<code>/create vs affiliate dropship</code>`,
+              { parse_mode: 'HTML' }
+            );
+          } else {
+            await bot.sendMessage(chatId,
+              `⏳ Membandingkan <b>"${kw1}"</b> vs <b>"${kw2}"</b>...`,
+              { parse_mode: 'HTML' }
+            );
+            const result = await contentGenerator.compareKeywords(kw1, kw2);
+            if (!result?.text) {
+              await bot.sendMessage(chatId, `❌ <b>Gagal membandingkan keyword.</b> Coba lagi.`, { parse_mode: 'HTML' });
+            } else {
+              await bot.sendMessage(chatId,
+                `⚔️ <b>KEYWORD BATTLE</b>\n<code>${modelLabel(result.model)}</code>`,
+                { parse_mode: 'HTML' }
+              );
+              await sendLong(result.text);
+            }
           }
 
-          const angles = parseContentAngles(result.text);
+        // ─────────────────────────────────────────────
+        // CASE: /create pack <keyword>
+        // ─────────────────────────────────────────────
+        } else if (sub === 'pack') {
+          const keyword = parts.slice(2).join(' ');
+          if (!keyword) {
+            await bot.sendMessage(chatId,
+              `❓ <b>Keyword tidak ditemukan!</b>\n\nContoh: <code>/create pack digital marketing</code>`,
+              { parse_mode: 'HTML' }
+            );
+          } else {
+            const trendCtx = buildTrendCtx(keyword);
+            const trendBadge = trendCtx ? '\n🔥 <i>Tren aktif terdeteksi — konteks diintegrasikan!</i>' : '';
+            await bot.sendMessage(chatId,
+              `⏳ Menyiapkan <b>Content Pack</b> untuk <b>"${keyword}"</b>...${trendBadge}\n<i>Ini mencakup 6 section — butuh beberapa detik</i>`,
+              { parse_mode: 'HTML' }
+            );
+            const result = await contentGenerator.generateContentPack(keyword, trendCtx);
+            if (!result?.text) {
+              await bot.sendMessage(chatId, `❌ <b>Gagal membuat Content Pack.</b> Coba lagi.`, { parse_mode: 'HTML' });
+            } else {
+              await bot.sendMessage(chatId,
+                `📦 <b>CONTENT PACK LENGKAP</b>\n<i>"${keyword}"</i> · <code>${modelLabel(result.model)}</code>`,
+                { parse_mode: 'HTML' }
+              );
+              await sendLong(result.text);
+            }
+          }
 
-          // Header
-          await bot.sendMessage(chatId,
-            `🎬 <b>CONTENT STRATEGY</b>\n` +
-            `<i>"${args}"</i>\n\n` +
-            `<b>${angles.length} angle</b> siap · <code>${result.model.split('/').pop()}</code>`,
-            { parse_mode: 'HTML' }
-          );
+        // ─────────────────────────────────────────────
+        // CASE: /create <platform> <keyword>
+        // ─────────────────────────────────────────────
+        } else if (PLATFORMS.includes(sub)) {
+          const keyword = parts.slice(2).join(' ');
+          if (!keyword) {
+            await bot.sendMessage(chatId,
+              `❓ <b>Keyword tidak ditemukan!</b>\n\nContoh: <code>/create ${sub} affiliate marketing</code>`,
+              { parse_mode: 'HTML' }
+            );
+          } else {
+            const meta = platformMeta[sub];
+            const trendCtx = buildTrendCtx(keyword);
+            const trendBadge = trendCtx ? '\n🔥 <i>Tren aktif terdeteksi!</i>' : '';
+            await bot.sendMessage(chatId,
+              `⏳ Meracik konten <b>${meta.label}</b> untuk <b>"${keyword}"</b>...${trendBadge}`,
+              { parse_mode: 'HTML' }
+            );
+            const result = await contentGenerator.generateByPlatform(keyword, sub, trendCtx);
+            if (!result?.text) {
+              await bot.sendMessage(chatId, `❌ <b>Gagal membuat konten ${meta.label}.</b> Coba lagi.`, { parse_mode: 'HTML' });
+            } else {
+              await bot.sendMessage(chatId,
+                `${meta.emoji} <b>${meta.label.toUpperCase()} CONTENT</b>\n<i>"${keyword}"</i> · <code>${modelLabel(result.model)}</code>`,
+                { parse_mode: 'HTML' }
+              );
+              await sendLong(result.text);
+            }
+          }
 
-          // One card per angle
-          for (let i = 0; i < angles.length; i++) {
-            await bot.sendMessage(chatId, formatAngleCard(i + 1, angles[i]), { parse_mode: 'HTML' });
+        // ─────────────────────────────────────────────
+        // CASE: /create <mode> <keyword>
+        // ─────────────────────────────────────────────
+        } else if (MODES.includes(sub)) {
+          const keyword = parts.slice(2).join(' ');
+          if (!keyword) {
+            await bot.sendMessage(chatId,
+              `❓ <b>Keyword tidak ditemukan!</b>\n\nContoh: <code>/create ${sub} chatgpt</code>`,
+              { parse_mode: 'HTML' }
+            );
+          } else {
+            const meta = modeMeta[sub];
+            const trendCtx = buildTrendCtx(keyword);
+            const trendBadge = trendCtx ? '\n🔥 <i>Tren aktif terdeteksi!</i>' : '';
+            await bot.sendMessage(chatId,
+              `⏳ Membuat <b>${meta.label}</b> untuk <b>"${keyword}"</b>...${trendBadge}`,
+              { parse_mode: 'HTML' }
+            );
+            const result = await contentGenerator.generateByMode(keyword, sub, trendCtx);
+            if (!result?.text) {
+              await bot.sendMessage(chatId, `❌ <b>Gagal membuat ${meta.label}.</b> Coba lagi.`, { parse_mode: 'HTML' });
+            } else {
+              await bot.sendMessage(chatId,
+                `${meta.emoji} <b>${meta.label.toUpperCase()}</b>\n<i>"${keyword}"</i> · <code>${modelLabel(result.model)}</code>`,
+                { parse_mode: 'HTML' }
+              );
+              await sendLong(result.text);
+            }
+          }
+
+        // ─────────────────────────────────────────────
+        // CASE: /create <tone> <keyword>
+        // ─────────────────────────────────────────────
+        } else if (TONES.includes(sub)) {
+          const keyword = parts.slice(2).join(' ');
+          if (!keyword) {
+            await bot.sendMessage(chatId,
+              `❓ <b>Keyword tidak ditemukan!</b>\n\nContoh: <code>/create ${sub} digital marketing</code>`,
+              { parse_mode: 'HTML' }
+            );
+          } else {
+            const meta = toneMeta[sub];
+            const trendCtx = buildTrendCtx(keyword);
+            const trendBadge = trendCtx ? '\n🔥 <i>Tren aktif terdeteksi!</i>' : '';
+            await bot.sendMessage(chatId,
+              `⏳ Membuat konten <b>${meta.label}</b> untuk <b>"${keyword}"</b>...${trendBadge}`,
+              { parse_mode: 'HTML' }
+            );
+            const result = await contentGenerator.generateByTone(keyword, sub, trendCtx);
+            if (!result?.text) {
+              await bot.sendMessage(chatId, `❌ <b>Gagal membuat konten ${meta.label}.</b> Coba lagi.`, { parse_mode: 'HTML' });
+            } else {
+              await bot.sendMessage(chatId,
+                `${meta.emoji} <b>${meta.label.toUpperCase()}</b>\n<i>"${keyword}"</i> · <code>${modelLabel(result.model)}</code>`,
+                { parse_mode: 'HTML' }
+              );
+              await sendLong(result.text);
+            }
+          }
+
+        // ─────────────────────────────────────────────
+        // CASE: /create <keyword> — DEFAULT (3 angle)
+        // ─────────────────────────────────────────────
+        } else {
+          const keyword = parts.slice(1).join(' ');
+          if (!keyword) {
+            // Tampilkan help lengkap
+            await bot.sendMessage(chatId,
+              `🎬 <b>CREATE — AI Content Generator</b>\n\n` +
+              `Gunakan: <code>/create [sub-command] [keyword]</code>\n\n` +
+              `<b>📱 Platform:</b>\n` +
+              `• <code>/create tiktok</code> — Script TikTok\n` +
+              `• <code>/create ig</code> — Caption Instagram Reels\n` +
+              `• <code>/create yt</code> — YouTube (judul + script)\n` +
+              `• <code>/create thread</code> — Twitter/X Thread viral\n` +
+              `• <code>/create email</code> — Email marketing copy\n\n` +
+              `<b>🎯 Mode:</b>\n` +
+              `• <code>/create hook</code> — 7 Power Hooks terbaik\n` +
+              `• <code>/create script</code> — Full video script 45 detik\n` +
+              `• <code>/create caption</code> — 3 caption + hashtag\n` +
+              `• <code>/create ideas</code> — 10 ide konten kreatif\n` +
+              `• <code>/create viral</code> — Formula viral + prediksi\n\n` +
+              `<b>🎨 Tone:</b>\n` +
+              `• <code>/create formal</code> — Profesional/B2B\n` +
+              `• <code>/create santai</code> — Casual Gen Z\n` +
+              `• <code>/create hard-sell</code> — Direct response\n` +
+              `• <code>/create story</code> — Storytelling\n` +
+              `• <code>/create edukasi</code> — How-to/edukatif\n\n` +
+              `<b>📦 Special:</b>\n` +
+              `• <code>/create pack</code> — Content Pack 6 section\n` +
+              `• <code>/create vs kw1 kw2</code> — Bandingkan keyword\n\n` +
+              `<i>Tanpa sub-command → 3 angle konten viral (default)</i>`,
+              { parse_mode: 'HTML' }
+            );
+          } else {
+            const trendCtx = buildTrendCtx(keyword);
+            const trendBadge = trendCtx ? '\n🔥 <i>Tren aktif terdeteksi — konteks diintegrasikan!</i>' : '';
+            await bot.sendMessage(chatId,
+              `⏳ Meracik script untuk <b>"${keyword}"</b>...${trendBadge}`,
+              { parse_mode: 'HTML' }
+            );
+            const result = await contentGenerator.generateHooks(keyword);
+
+            if (!result?.text) {
+              await bot.sendMessage(chatId,
+                `❌ <b>Gagal meracik konten.</b>\nAI tidak memberikan respons. Coba keyword yang lebih spesifik!`,
+                { parse_mode: 'HTML' }
+              );
+            } else {
+              const angles = parseContentAngles(result.text);
+              await bot.sendMessage(chatId,
+                `🎬 <b>CONTENT STRATEGY</b>\n` +
+                `<i>"${keyword}"</i>\n\n` +
+                `<b>${angles.length} angle</b> siap · <code>${modelLabel(result.model)}</code>` +
+                (trendCtx ? `\n🔥 <i>${trendCtx}</i>` : ''),
+                { parse_mode: 'HTML' }
+              );
+              for (let i = 0; i < angles.length; i++) {
+                await bot.sendMessage(chatId, formatAngleCard(i + 1, angles[i]), { parse_mode: 'HTML' });
+              }
+            }
           }
         }
       } else if (text.startsWith('/news')) {
