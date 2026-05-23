@@ -59,61 +59,43 @@ module.exports = async (req, res) => {
     try {
       if (text.startsWith('/start')) {
         await bot.sendMessage(chatId,
-          `Halo! Saya adalah <b>AI Trading &amp; Content Assistant</b> Anda.\n\nGunakan perintah berikut:\n\n` +
-          `🔭 /outlook — <b>Market outlook 7-day: bias score, skenario &amp; kalender event</b>\n` +
-          `🏦 /stock — <b>Outlook saham Indonesia: IHSG &amp; LQ45</b>\n` +
-          `⚡ /fast — <b>Sinyal instan sekarang</b>\n` +
-          `🔍 /high — Scanning high-probability setup\n` +
-          `📐 /quant — <b>Quant analysis: momentum screener &amp; stat report</b>\n` +
-          `🔄 /quant reversion — <b>Mean reversion scan: cari coin overextended</b>\n` +
-          `⛓️ /onchain — <b>Analisis on-chain: MVRV, TVL, Fear &amp; Greed</b>\n` +
-          `💥 /liq — <b>Likuidasi &amp; Long/Short Ratio futures market</b>\n` +
-          `🎯 /poly — <b>Polymarket: sinyal dari prediction market global</b>\n` +
-          `🔐 /crypto — <b>Dampak berita ekonomi ke market</b>\n` +
-          `📰 /news — Berita market &amp; crypto terbaru\n` +
-          `📡 /blom — <b>Bloomberg Intelligence: berita keuangan global terkini</b>\n` +
-          `📈 /trend — <b>Analisis Tren Sosmed Indonesia</b>\n` +
-          `📈 /trend hot — <b>Hanya topik yang sedang naik</b>\n` +
-          `📈 /trend compare [cat1] [cat2] — <b>Bandingkan 2 kategori</b>\n\n` +
-          `<b>🎬 Content Creator (/create):</b>\n` +
-          `🎬 /create &lt;keyword&gt; — 3 angle konten viral (default)\n` +
-          `🎵 /create tiktok &lt;kw&gt; — Script khusus TikTok\n` +
+          `👋 <b>AI Trading &amp; Content Assistant</b>\n\n` +
+          `📊 <b>Trading</b>\n` +
+          `⚡ /fast — Sinyal instan\n` +
+          `🔍 /high — High-probability setup\n` +
+          `🔭 /outlook — Market outlook 7-day\n` +
+          `🏦 /stock — Saham Indonesia (IHSG/LQ45)\n` +
+          `📐 /quant — Quant analysis\n` +
+          `⛓️ /onchain — On-chain analysis\n` +
+          `💥 /liq — Likuidasi &amp; L/S Ratio\n` +
+          `🎯 /poly — Prediction market\n\n` +
+          `📰 <b>Berita &amp; Tren</b>\n` +
+          `📰 /news — Berita market &amp; crypto\n` +
+          `📡 /blom — Bloomberg Intelligence\n` +
+          `🔐 /crypto — Dampak berita ke market\n` +
+          `📈 /trend — Tren sosmed Indonesia\n\n` +
+          `🎬 <b>Content Creator</b>\n` +
+          `🎬 /create &lt;kw&gt; — 3 angle konten viral (default)\n` +
+          `🎵 /create tiktok &lt;kw&gt; — Script TikTok\n` +
           `📸 /create ig &lt;kw&gt; — Caption &amp; Reels Instagram\n` +
           `▶️ /create yt &lt;kw&gt; — Judul, thumbnail &amp; script YouTube\n` +
           `🧵 /create thread &lt;kw&gt; — Viral Twitter/X Thread\n` +
           `📧 /create email &lt;kw&gt; — Email marketing copy\n` +
           `🪝 /create hook &lt;kw&gt; — 7 power hooks terbaik\n` +
           `📝 /create script &lt;kw&gt; — Full video script 45 detik\n` +
-          `✍️ /create caption &lt;kw&gt; — 3 caption siap pakai + hashtag\n` +
+          `✍️ /create caption &lt;kw&gt; — 3 caption + hashtag\n` +
           `💡 /create ideas &lt;kw&gt; — 10 ide konten kreatif\n` +
-          `🔥 /create viral &lt;kw&gt; — Analisis formula viral\n` +
-          `📦 /create pack &lt;kw&gt; — Content Pack lengkap (6 section)\n` +
-          `👔 /create formal &lt;kw&gt; — Gaya profesional / B2B\n` +
+          `🔥 /create viral &lt;kw&gt; — Formula konten viral\n` +
+          `📦 /create pack &lt;kw&gt; — Content pack lengkap\n` +
+          `👔 /create formal &lt;kw&gt; — Gaya profesional/B2B\n` +
           `😎 /create santai &lt;kw&gt; — Gaya Gen Z casual\n` +
           `💰 /create hard-sell &lt;kw&gt; — Copy jualan langsung\n` +
           `📖 /create story &lt;kw&gt; — Format storytelling\n` +
           `🎓 /create edukasi &lt;kw&gt; — Konten how-to &amp; edukatif\n` +
           `⚔️ /create vs &lt;kw1&gt; &lt;kw2&gt; — Bandingkan 2 keyword\n\n` +
-          `<b>🏦 Stock Sub-commands:</b>\n` +
-          `📊 /stock BBCA — Analisis teknikal saham spesifik\n` +
-          `<i>Semua kode saham IDX didukung: BBRI, TLKM, GOTO, dll</i>\n\n` +
-          `<b>🔭 Outlook Sub-commands:</b>\n` +
-          `🪙 /outlook BTC — Outlook spesifik per pair (BTC, ETH, SOL, dll)\n` +
-          `🏭 /outlook sector — Sector rotation heatmap (L1, DeFi, AI, Meme, dll)\n` +
-          `🌐 /outlook macro — Kalender ekonomi &amp; risk minggu ini\n` +
-          `📐 /outlook scenario — 3 skenario Bull/Base/Bear detail\n\n` +
-          `<b>🚨 Real-time Alerts:</b>\n` +
-          `🚨 /crypto alert NFP BTC — Monitor event dampak\n` +
-          `⚙️ /crypto auto — Auto-monitor upcoming events (next 2h)\n` +
-          `📊 /crypto report — Lihat statistik alerts\n` +
-          `🔴 /crypto active — Lihat monitoring aktif\n` +
-          `⛔ /crypto stop — Hentikan semua monitoring\n\n` +
-          `<b>📊 Performance Tracking:</b>\n` +
-          `📝 /result — Catat hasil trade\n` +
-          `📊 /stats — Lihat statistik &amp; win rate\n` +
-          `⏳ /pending — Lihat sinyal yang belum dicatat\n\n` +
-          `<b>ℹ️ Info:</b>\n` +
-          `📋 /list coin — Lihat daftar coin di /high &amp; /fast`,
+          `📊 <b>Performance</b>\n` +
+          `📝 /result · 📊 /stats · ⏳ /pending\n\n` +
+          `<i>Ketik perintah untuk mulai!</i>`,
           { parse_mode: 'HTML' }
         );
       } else if (text.startsWith('/outlook')) {
