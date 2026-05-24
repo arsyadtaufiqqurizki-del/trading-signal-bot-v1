@@ -2,6 +2,16 @@
 
 const axios = require('axios');
 
+// ─── HELPER: Escape HTML untuk keamanan Telegram parse_mode HTML ──────────────
+function esc(str) {
+  if (!str && str !== 0) return '—';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 // ─── CHAIN CONFIG ────────────────────────────────────────────────────────────
 const CHAIN_CONFIG = {
   sol:  { id: 'solana',  label: 'Solana',    emoji: '◎',  dex: 'Raydium/Jupiter',   color: '🟣' },
@@ -235,34 +245,35 @@ async function fetchPairsByChain(chainId) {
 // ─── FORMAT: Kartu token tunggal ─────────────────────────────────────────────
 function formatTokenCard(pair, chainCfg, index) {
   const risk     = getRiskScore(pair);
-  const name     = pair.baseToken?.name  || 'Unknown';
-  const symbol   = pair.baseToken?.symbol || '???';
-  const price    = fmtPrice(parseFloat(pair.priceUsd || 0));
-  const liq      = fmtNum(pair.liquidity?.usd);
-  const vol24h   = fmtNum(pair.volume?.h24);
-  const mcap     = fmtNum(pair.marketCap || pair.fdv);
-  const age      = fmtAge(pair.pairCreatedAt);
-  const dexName  = pair.dexId?.replace(/-/g, ' ').toUpperCase() || chainCfg.dex;
+  const name     = esc(pair.baseToken?.name  || 'Unknown');
+  const symbol   = esc(pair.baseToken?.symbol || '???');
+  const price    = esc(fmtPrice(parseFloat(pair.priceUsd || 0)));
+  const liq      = esc(fmtNum(pair.liquidity?.usd));
+  const vol24h   = esc(fmtNum(pair.volume?.h24));
+  const mcap     = esc(fmtNum(pair.marketCap || pair.fdv));
+  const age      = esc(fmtAge(pair.pairCreatedAt));
+  const dexName  = esc(pair.dexId?.replace(/-/g, ' ').toUpperCase() || chainCfg.dex);
 
-  const ch5m  = fmtChange(pair.priceChange?.m5);
-  const ch1h  = fmtChange(pair.priceChange?.h1);
-  const ch6h  = fmtChange(pair.priceChange?.h6);
-  const ch24h = fmtChange(pair.priceChange?.h24);
+  const ch5m  = esc(fmtChange(pair.priceChange?.m5));
+  const ch1h  = esc(fmtChange(pair.priceChange?.h1));
+  const ch6h  = esc(fmtChange(pair.priceChange?.h6));
+  const ch24h = esc(fmtChange(pair.priceChange?.h24));
 
   const hotEmoji = changeEmoji(pair.priceChange?.h1);
 
   const buys  = pair.txns?.h24?.buys  || 0;
   const sells = pair.txns?.h24?.sells || 0;
 
+  // URL tidak di-escape agar tetap valid sebagai href
   const chartUrl = pair.url || `https://dexscreener.com/${chainCfg.id}/${pair.pairAddress}`;
 
   const warnStr = risk.warnings.length > 0
-    ? risk.warnings.slice(0, 2).map(w => `   ⚠️ ${w}`).join('\n')
+    ? risk.warnings.slice(0, 2).map(w => `   ⚠️ ${esc(w)}`).join('\n')
     : '   ✅ Tidak ada red flag terdeteksi';
 
   return (
     `${hotEmoji} <b>${index}. ${name} (${symbol})</b>\n` +
-    `📍 ${chainCfg.label} · ${dexName}\n` +
+    `📍 ${esc(chainCfg.label)} · ${dexName}\n` +
     `⏰ Usia: <b>${age}</b>\n\n` +
     `💰 Harga: <b>${price}</b>\n` +
     `📊 5m: <code>${ch5m}</code>  1h: <code>${ch1h}</code>  6h: <code>${ch6h}</code>  24h: <code>${ch24h}</code>\n\n` +
@@ -390,15 +401,15 @@ async function runDexOverview(bot, chatId) {
 
         const top1 = tokens[0];
         const risk = getRiskScore(top1);
-        const name = top1.baseToken?.name || 'Unknown';
-        const sym  = top1.baseToken?.symbol || '???';
-        const ch1h = fmtChange(top1.priceChange?.h1);
-        const vol  = fmtNum(top1.volume?.h24);
-        const liq  = fmtNum(top1.liquidity?.usd);
-        const age  = fmtAge(top1.pairCreatedAt);
+        const name = esc(top1.baseToken?.name || 'Unknown');
+        const sym  = esc(top1.baseToken?.symbol || '???');
+        const ch1h = esc(fmtChange(top1.priceChange?.h1));
+        const vol  = esc(fmtNum(top1.volume?.h24));
+        const liq  = esc(fmtNum(top1.liquidity?.usd));
+        const age  = esc(fmtAge(top1.pairCreatedAt));
         const hot  = changeEmoji(top1.priceChange?.h1);
 
-        overview += `${cfg.emoji} <b>${cfg.label}</b> — ${tokens.length} token baru\n`;
+        overview += `${cfg.emoji} <b>${esc(cfg.label)}</b> — ${tokens.length} token baru\n`;
         overview += `${hot} <b>${name} (${sym})</b>\n`;
         overview += `   1h: <code>${ch1h}</code>  Vol: ${vol}  Liq: ${liq}\n`;
         overview += `   Usia: ${age}  Risk: ${risk.emoji} ${risk.label}\n`;
