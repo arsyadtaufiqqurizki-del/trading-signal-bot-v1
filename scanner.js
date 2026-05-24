@@ -170,7 +170,6 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
   const ltfBos    = detectBOS(ltfCandles, ltfStruct);
   const ltfChoch  = detectCHoCH(ltfCandles, ltfStruct);
   const ltfDiv    = detectDivergence(ltfCandles, ltfRsi);
-  const ltfVolume = isVolumeSpike(ltfCandles, 20, 1.5);
   const ltfCVD    = calcCVD(ltfCandles);
   const ltfCVDDiv = detectCVDDivergence(ltfCandles, ltfCVD);
   const cvdCurrent = ltfCVD[ltfCVD.length - 1].cumDelta;
@@ -214,7 +213,7 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
 
   // Tier 2 — new indicators
   const ltfMacd      = calcMACD(ltfCloses);
-  const execStochRsi = calcStochRSI(execCandles.map(c => c.close));
+  const execStochRsi = calcStochRSI(htfCandles.map(c => c.close));
   const htfPattern   = detectCandlePattern(htfCandles);
 
   const price = ltfCandles[ltfCandles.length - 1].close;
@@ -245,7 +244,9 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
       fibBullish   = p1.type === 'LOW';
       fibLevels    = calcFibLevels(fibSwingLow, fibSwingHigh);
       // 0.8% tolerance — fib zones are conceptual, not exact
-      fibNearLevel = fibLevels.find(f => Math.abs(price - f.price) / price < 0.008);
+      if (price >= fibSwingLow && price <= fibSwingHigh) {
+        fibNearLevel = fibLevels.find(f => Math.abs(price - f.price) / price < 0.008);
+      }
     }
   }
 
@@ -316,16 +317,6 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
   if (ltfChoch === 'BULLISH_CHOCH') { longScore  += 2; longFactors.push('Bullish CHoCH — Structure Shift 🔄'); }
   if (ltfChoch === 'BEARISH_CHOCH') { shortScore += 2; shortFactors.push('Bearish CHoCH — Structure Shift 🔄'); }
 
-  // 6. Volume spike — direction from CVD delta of the spike candle, not candle color
-  if (ltfVolume) {
-    const lastDelta = ltfCVD[ltfCVD.length - 1].delta;
-    if (lastDelta > 0) { longScore  += 2; longFactors.push('Bullish Volume Spike ⚡'); }
-    else               { shortScore += 2; shortFactors.push('Bearish Volume Spike ⚡'); }
-  } else if (pair.tier >= 3) {
-    longScore  -= 1;
-    shortScore -= 1;
-  }
-
   // 6b. CVD — Divergence (+2) and trend confirmation (+1)
   if (ltfCVDDiv === 'BULLISH_CVD_DIV') { longScore  += 2; longFactors.push('Bullish CVD Divergence — Hidden Buying 📊'); }
   if (ltfCVDDiv === 'BEARISH_CVD_DIV') { shortScore += 2; shortFactors.push('Bearish CVD Divergence — Hidden Selling 📊'); }
@@ -394,7 +385,7 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
     shortScore += 1; shortFactors.push('MACD Histogram Expanding ✅');
   }
 
-  // 11. Stochastic RSI Entry Timing — exec TF 15m (Medium Weight)
+  // 11. Stochastic RSI Entry Timing — HTF 4H (Medium Weight)
   if (execStochRsi.prevK < 20 && execStochRsi.k > execStochRsi.prevK) {
     longScore += 2; longFactors.push('StochRSI Cross Oversold 🔥');
   } else if (execStochRsi.prevK > 80 && execStochRsi.k < execStochRsi.prevK) {
@@ -412,14 +403,7 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
   if (ltfSweep === 'BULLISH_SWEEP') { longScore  += 3; longFactors.push('Bullish Liquidity Sweep 🎯'); }
   if (ltfSweep === 'BEARISH_SWEEP') { shortScore += 3; shortFactors.push('Bearish Liquidity Sweep 🎯'); }
 
-  // 14. 3 Consecutive H1 Candles — momentum berkelanjutan (Medium Weight)
-  const last3Ltf   = ltfCandles.slice(-3);
-  const allBullish3 = last3Ltf.every(c => c.close > c.open);
-  const allBearish3 = last3Ltf.every(c => c.close < c.open);
-  if (allBullish3) { longScore  += 2; longFactors.push('3 Bullish Candles H1 ✅'); }
-  if (allBearish3) { shortScore += 2; shortFactors.push('3 Bearish Candles H1 ✅'); }
-
-  // 15. H1 Spike Kuat — body > 2x rata-rata body 20 candle (Low Weight)
+  // 14. H1 Spike Kuat — body > 2x rata-rata body 20 candle (Low Weight)
   const lastLtfCandle = ltfCandles[ltfCandles.length - 1];
   const lastBody      = Math.abs(lastLtfCandle.close - lastLtfCandle.open);
   const avgBody       = ltfCandles.slice(-20).reduce((s, c) => s + Math.abs(c.close - c.open), 0) / 20;
@@ -492,7 +476,7 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
         rrAgg, rrCons,
         confluenceScore: longScore, factors: [...longFactors, execConfirmLabel],
         rsi: curRsi, htfBias, htfTrend: htfStruct.trend, ltfTrend: ltfStruct.trend,
-        bos: ltfBos, choch: ltfChoch, divergence: ltfDiv, volumeSpike: ltfVolume,
+        bos: ltfBos, choch: ltfChoch, divergence: ltfDiv,
         cvdDivergence: ltfCVDDiv, cvdCurrent, cvdRising,
         nearLevel: nearSupport,
         atr, htfEma50: curHtfE50, htfEma200: curHtfE200,
@@ -542,7 +526,7 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
         rrAgg, rrCons,
         confluenceScore: shortScore, factors: [...shortFactors, execConfirmLabel],
         rsi: curRsi, htfBias, htfTrend: htfStruct.trend, ltfTrend: ltfStruct.trend,
-        bos: ltfBos, choch: ltfChoch, divergence: ltfDiv, volumeSpike: ltfVolume,
+        bos: ltfBos, choch: ltfChoch, divergence: ltfDiv,
         cvdDivergence: ltfCVDDiv, cvdCurrent, cvdRising,
         nearLevel: nearResist,
         atr, htfEma50: curHtfE50, htfEma200: curHtfE200,
