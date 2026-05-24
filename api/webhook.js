@@ -68,7 +68,8 @@ module.exports = async (req, res) => {
           `📐 /quant — Quant analysis\n` +
           `⛓️ /onchain — On-chain analysis\n` +
           `💥 /liq — Likuidasi &amp; L/S Ratio\n` +
-          `🎯 /poly — Prediction market\n\n` +
+          `🎯 /poly — Prediction market\n` +
+          `🔎 /dex — Monitor token baru di DEX (SOL/BNB/ETH/BASE)\n\n` +
           `📰 <b>Berita &amp; Tren</b>\n` +
           `📰 /news — Berita market &amp; crypto\n` +
           `📡 /blom — Bloomberg Intelligence\n` +
@@ -1023,6 +1024,38 @@ module.exports = async (req, res) => {
           });
           msg += `Catat hasil: <code>/result PAIR DIR OUTCOME</code>`;
           await bot.sendMessage(chatId, msg, { parse_mode: 'HTML' });
+        }
+
+      } else if (text.startsWith('/dex')) {
+        const args    = text.trim().split(/\s+/);
+        const sub     = args[1]?.toLowerCase();
+        const validChains = ['sol', 'bnb', 'eth', 'base'];
+        const validSubs   = [...validChains, 'hot', 'safe'];
+
+        if (sub && !validSubs.includes(sub)) {
+          await bot.sendMessage(chatId,
+            `❓ <b>Sub-command tidak valid.</b>\n\nGunakan:\n` +
+            `• <code>/dex</code> — Overview semua chain\n` +
+            `• <code>/dex sol</code> — Token baru di Solana\n` +
+            `• <code>/dex bnb</code> — Token baru di BNB Chain\n` +
+            `• <code>/dex eth</code> — Token baru di Ethereum\n` +
+            `• <code>/dex base</code> — Token baru di Base (Coinbase L2)\n` +
+            `• <code>/dex hot</code> — Token yang sedang pump semua chain\n` +
+            `• <code>/dex safe</code> — Token dengan risiko rendah`,
+            { parse_mode: 'HTML' }
+          );
+        } else if (!sub) {
+          const { runDexOverview } = require('../dex');
+          await runDexOverview(bot, chatId);
+        } else if (sub === 'hot') {
+          const { runDexHot } = require('../dex');
+          await runDexHot(bot, chatId);
+        } else if (sub === 'safe') {
+          const { runDexSafe } = require('../dex');
+          await runDexSafe(bot, chatId);
+        } else {
+          const { runDexChain } = require('../dex');
+          await runDexChain(bot, chatId, sub);
         }
 
       } else if (text.startsWith('/status')) {
