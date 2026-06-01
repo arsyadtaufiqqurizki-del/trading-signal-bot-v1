@@ -1,5 +1,5 @@
 'use strict';
-const { getKlines } = require('./binance');
+const { getKlines, fetchFundingOI } = require('./binance');
 const {
   calcEMA, calcRSI, calcATR, calcADX, calcMACD, calcStochRSI,
   isVolumeSpike, detectStructure, detectBOS, detectCHoCH,
@@ -144,10 +144,11 @@ function isVolumeRising(candles) {
 }
 
 async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
-  const [htfCandles, ltfCandles, execCandles] = await Promise.all([
+  const [htfCandles, ltfCandles, execCandles, fundingOI] = await Promise.all([
     getKlines(pair.symbol, pair.htf, 200),
     getKlines(pair.symbol, pair.ltf, 200),
     getKlines(pair.symbol, pair.exec, 200),
+    fetchFundingOI(pair.symbol).catch(() => ({ fundingRate: null, oiValue: null, oiChange: null })),
   ]);
 
   if (!htfCandles.length || !ltfCandles.length || !execCandles.length) return { signal: null, debug: { blockedBy: 'Data candle tidak tersedia' } };
@@ -412,6 +413,60 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
     else                                           { shortScore += 1; shortFactors.push('H1 Bearish Spike ⚡'); }
   }
 
+  // 15. Funding Rate — crowded position filter (Medium Weight)
+  // Positive funding = longs pay shorts = crowded long → longs risky, shorts favored
+  // Negative funding = shorts pay longs = crowded short → shorts risky, longs favored
+  // Extreme funding (>|0.08%|) = squeeze risk → peringatan, reward contrarian
+  const fundingRate = fundingOI.fundingRate;
+  if (fundingRate !== null) {
+    if (fundingRate > 0.08) {
+      // Extreme positive: longs overcrowded → squeeze risk for longs (warning only)
+      shortScore += 2; shortFactors.push(`Funding +${fundingRate.toFixed(3)}% — Crowded Long ⚠️`);
+    } else if (fundingRate > 0.02) {
+      // Mild positive: slight long bias, confirms demand
+      longScore  += 1; longFactors.push(`Funding +${fundingRate.toFixed(3)}% — Demand Healthy ✅`);
+    } else if (fundingRate < -0.08) {
+      // Extreme negative: shorts overcrowded → squeeze risk for shorts (warning only)
+      longScore  += 2; longFactors.push(`Funding ${fundingRate.toFixed(3)}% — Crowded Short ⚠️`);
+    } else if (fundingRate < -0.02) {
+      // Mild negative: slight short bias, confirms selling pressure
+      shortScore += 1; shortFactors.push(`Funding ${fundingRate.toFixed(3)}% — Selling Pressure ✅`);
+    }
+    // Funding between -0.02% and +0.02% = neutral, no score change
+  }
+
+  // 16. Open Interest Change — trend strength + divergence detector (Medium Weight)
+  // OI rising + price rising  = new money entering, trend strong (continuation)
+  // OI rising + price falling = new shorts entering, bearish conviction
+  // OI falling + price rising = short covering, weak rally (divergence)
+  // OI falling + price falling = long capitulation, trend exhausting
+  const oiChange = fundingOI.oiChange;
+  const priceRising  = ltfCandles[ltfCandles.length - 1].close > ltfCandles[ltfCandles.length - 5].close;
+  const priceFalling = ltfCandles[ltfCandles.length - 1].close < ltfCandles[ltfCandles.length - 5].close;
+
+  if (oiChange !== null) {
+    if (oiChange > 2) {
+      // Strong OI increase: significant new positions opening
+      if (priceRising) {
+        longScore  += 2; longFactors.push(`OI +${oiChange.toFixed(1)}% + Price ↑ — Trend Strength 📊`);
+      } else if (priceFalling) {
+        shortScore += 2; shortFactors.push(`OI +${oiChange.toFixed(1)}% + Price ↓ — New Shorts Entering 📊`);
+      }
+    } else if (oiChange > 0.5) {
+      // Mild OI increase
+      if (priceRising) {
+        longScore  += 1; longFactors.push(`OI +${oiChange.toFixed(1)}% — Buying Interest ✅`);
+      }
+    } else if (oiChange < -2) {
+      // Strong OI decrease: positions closing rapidly
+      if (priceRising) {
+        shortScore += 1; shortFactors.push(`OI ${oiChange.toFixed(1)}% + Price ↑ — Short Covering ⚠️`);
+      } else if (priceFalling) {
+        longScore  += 1; longFactors.push(`OI ${oiChange.toFixed(1)}% + Price ↓ — Capitulation Exhaustion 📊`);
+      }
+    }
+  }
+
   // ── SIGNAL GENERATION ────────────────────────────────────────────────────
   const cfg = TIER_CONFIG[pair.tier] || TIER_CONFIG[1];
 
@@ -486,6 +541,7 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
         isReversal, adxWarning,
         nearestSupport, nearestResistance,
         fibLevels, fibNearLevel, fibSwingLow, fibSwingHigh, fibBullish,
+        fundingRate, oiChange,
       };
     }
   } else if (shortScore >= cfg.minConfluence && shortScore >= longScore + cfg.minScoreGap && shortAllowed) {
@@ -536,6 +592,7 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
         isReversal, adxWarning,
         nearestSupport, nearestResistance,
         fibLevels, fibNearLevel, fibSwingLow, fibSwingHigh, fibBullish,
+        fundingRate, oiChange,
       };
     }
   }

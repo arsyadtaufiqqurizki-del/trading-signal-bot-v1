@@ -162,6 +162,8 @@ ${confluenceList}
 • <b>RSI 1H:</b> ${fmt(signal.rsi, 1)}
 • <b>ADX:</b> ${fmt(signal.adx, 1)} (Trend Strength)
 • <b>CVD:</b> ${signal.cvdCurrent != null ? (signal.cvdCurrent >= 0 ? '+' : '') + fmt(signal.cvdCurrent, 0) : 'N/A'} ${signal.cvdRising ? '↑ Buying Pressure' : '↓ Selling Pressure'}${signal.cvdDivergence ? ` | ⚠️ <b>${signal.cvdDivergence === 'BULLISH_CVD_DIV' ? 'Bullish Divergence' : 'Bearish Divergence'}</b>` : ''}
+• <b>Funding Rate:</b> ${signal.fundingRate != null ? (signal.fundingRate >= 0 ? '+' : '') + signal.fundingRate.toFixed(4) + '%' : 'N/A'}${signal.fundingRate != null ? (signal.fundingRate > 0.08 ? ' 🔴 Crowded Long' : signal.fundingRate < -0.08 ? ' 🔴 Crowded Short' : signal.fundingRate > 0.02 ? ' ✅ Healthy Demand' : signal.fundingRate < -0.02 ? ' ⚠️ Selling Pressure' : ' ⚖️ Neutral') : ''}
+• <b>Open Interest Δ:</b> ${signal.oiChange != null ? (signal.oiChange >= 0 ? '+' : '') + signal.oiChange.toFixed(2) + '%' : 'N/A'}${signal.oiChange != null ? (signal.oiChange > 2 ? ' 📈 New Positions' : signal.oiChange < -2 ? ' 📉 Positions Closing' : ' → Stable') : ''}
 
 <b>📝 ALASAN ENTRY:</b>
 <i>${reason}</i>
