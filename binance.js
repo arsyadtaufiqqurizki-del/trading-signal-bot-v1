@@ -104,7 +104,8 @@ async function fetchFundingOI(symbol) {
     }
 
     return { fundingRate, oiValue, oiChange };
-  } catch {
+  } catch (e) {
+    console.warn(`[fetchFundingOI] ${sym} failed:`, e.response?.status || e.message);
     return { fundingRate: null, oiValue: null, oiChange: null };
   }
 }

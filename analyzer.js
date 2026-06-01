@@ -249,7 +249,12 @@ async function runAnalysisPair(bot, chatId, keyword) {
 
   try {
     const { btcTrend1h, btcTrend4h } = await fetchBtcTrends();
-    const { signal, debug } = await analyzeAsset(pairConfig, btcTrend1h, btcTrend4h);
+
+    // Fetch funding/OI untuk single pair (tidak ada rate limit issue)
+    const { fetchFundingOI } = require('./binance');
+    const fundingOI = await fetchFundingOI(pairConfig.symbol).catch(() => null);
+
+    const { signal, debug } = await analyzeAsset(pairConfig, btcTrend1h, btcTrend4h, fundingOI);
 
     if (!signal) {
       const d = debug || {};

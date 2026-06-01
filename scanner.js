@@ -143,12 +143,11 @@ function isVolumeRising(candles) {
   return recent5 > prev5;
 }
 
-async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
-  const [htfCandles, ltfCandles, execCandles, fundingOI] = await Promise.all([
+async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL', fundingOI = null) {
+  const [htfCandles, ltfCandles, execCandles] = await Promise.all([
     getKlines(pair.symbol, pair.htf, 200),
     getKlines(pair.symbol, pair.ltf, 200),
     getKlines(pair.symbol, pair.exec, 200),
-    fetchFundingOI(pair.symbol).catch(() => ({ fundingRate: null, oiValue: null, oiChange: null })),
   ]);
 
   if (!htfCandles.length || !ltfCandles.length || !execCandles.length) return { signal: null, debug: { blockedBy: 'Data candle tidak tersedia' } };
@@ -417,7 +416,7 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
   // Positive funding = longs pay shorts = crowded long → longs risky, shorts favored
   // Negative funding = shorts pay longs = crowded short → shorts risky, longs favored
   // Extreme funding (>|0.08%|) = squeeze risk → peringatan, reward contrarian
-  const fundingRate = fundingOI.fundingRate;
+  const fundingRate = fundingOI ? fundingOI.fundingRate : null;
   if (fundingRate !== null) {
     if (fundingRate > 0.08) {
       // Extreme positive: longs overcrowded → squeeze risk for longs (warning only)
@@ -440,7 +439,7 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL') {
   // OI rising + price falling = new shorts entering, bearish conviction
   // OI falling + price rising = short covering, weak rally (divergence)
   // OI falling + price falling = long capitulation, trend exhausting
-  const oiChange = fundingOI.oiChange;
+  const oiChange = fundingOI ? fundingOI.oiChange : null;
   const priceRising  = ltfCandles[ltfCandles.length - 1].close > ltfCandles[ltfCandles.length - 5].close;
   const priceFalling = ltfCandles[ltfCandles.length - 1].close < ltfCandles[ltfCandles.length - 5].close;
 
@@ -643,10 +642,46 @@ async function fetchBtcTrends() {
 
 async function scanAllPairs() {
   const { btcTrend1h, btcTrend4h } = await fetchBtcTrends();
+
+  // Phase 1: Technical analysis untuk semua pair (tanpa funding/OI — cepat)
   const results = await Promise.allSettled(PAIRS.map(p => analyzeAsset(p, btcTrend1h, btcTrend4h)));
-  return results
+  const candidates = results
     .filter(r => r.status === 'fulfilled' && r.value !== null && r.value.signal !== null)
     .map(r => r.value.signal)
+    .sort((a, b) => b.confluenceScore - a.confluenceScore)
+    .slice(0, 5); // Top 5 candidates
+
+  if (candidates.length === 0) return [];
+
+  // Phase 2: Fetch funding/OI hanya untuk top 5 (hindari rate limit)
+  const fundingOIs = await Promise.allSettled(
+    candidates.map(sig => {
+      const pair = PAIRS.find(p => p.name === sig.pair);
+      return pair ? fetchFundingOI(pair.symbol) : Promise.resolve(null);
+    })
+  );
+
+  // Phase 3: Re-score dengan funding/OI data
+  const rescored = [];
+  for (let i = 0; i < candidates.length; i++) {
+    const sig = candidates[i];
+    const fo  = fundingOIs[i].status === 'fulfilled' ? fundingOIs[i].value : null;
+
+    if (fo && (fo.fundingRate !== null || fo.oiChange !== null)) {
+      const pair = PAIRS.find(p => p.name === sig.pair);
+      if (pair) {
+        const { signal } = await analyzeAsset(pair, btcTrend1h, btcTrend4h, fo);
+        if (signal) {
+          rescored.push(signal);
+          continue;
+        }
+      }
+    }
+    // Fallback: pakai signal dari phase 1 (tanpa funding/OI)
+    rescored.push(sig);
+  }
+
+  return rescored
     .sort((a, b) => b.confluenceScore - a.confluenceScore)
     .slice(0, 3);
 }
