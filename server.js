@@ -163,8 +163,47 @@ app.get('/', (req, res) => {
   res.status(200).send('Bot Server is running and healthy!');
 });
 
+// ─── SCHEDULED AUTO-NEWS (10:00 AM WIB) ───
+function scheduleAutoNews() {
+  const { getNewsData } = require('./news');
+  
+  function scheduleNext() {
+    const now = new Date();
+    const target = new Date();
+    target.setUTCHours(3, 0, 0, 0); // 10:00 AM WIB = 03:00 UTC
+    
+    if (now >= target) {
+      target.setUTCDate(target.getUTCDate() + 1);
+    }
+    
+    const delay = target.getTime() - now.getTime();
+    console.log(`[SCHEDULER] Next auto-news in ${Math.round(delay / 60000)} mins (Target: ${target.toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' })} WIB)`);
+    
+    setTimeout(async () => {
+      try {
+        console.log('[SCHEDULER] Sending scheduled auto-news...');
+        const token = process.env.TELEGRAM_BOT_TOKEN;
+        const chatId = process.env.TELEGRAM_CHAT_ID;
+        if (token && chatId) {
+          const TelegramBot = require('node-telegram-bot-api');
+          const bot = new TelegramBot(token);
+          const newsMessage = await getNewsData();
+          await bot.sendMessage(chatId, newsMessage, { parse_mode: 'HTML', disable_web_page_preview: true });
+          console.log('[SCHEDULER] Auto-news sent successfully.');
+        }
+      } catch (error) {
+        console.error('[SCHEDULER ERROR] Failed to send auto-news:', error);
+      }
+      scheduleNext();
+    }, delay);
+  }
+  
+  scheduleNext();
+}
+
 app.listen(PORT, () => {
   console.log(`[SERVER] Bot is listening on port ${PORT}`);
   console.log(`[SERVER] Webhook URL: https://your-cloud-run-url/api/webhook`);
+  scheduleAutoNews();
 });
 
