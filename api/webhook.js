@@ -69,6 +69,7 @@ module.exports = async (req, res) => {
           `⛓️ /onchain — On-chain analysis\n` +
           `💥 /liq — Likuidasi &amp; L/S Ratio\n` +
           `🎯 /poly — Prediction market\n` +
+          `📊 /options — Deribit Options Flow (PCR/MaxPain/GEX)\n` +
           `🔎 /dex — Monitor token baru di DEX (SOL/BNB/ETH/BASE)\n\n` +
           `📰 <b>Berita &amp; Tren</b>\n` +
           `📰 /news — Berita market &amp; crypto\n` +
@@ -120,6 +121,31 @@ module.exports = async (req, res) => {
         } else {
           const { runOutlook } = require('../outlook');
           await runOutlook(bot, chatId);
+        }
+      } else if (text.startsWith('/options')) {
+        const args    = text.trim().split(/\s+/);
+        const sub     = args[1]?.toLowerCase();
+        const validCurrencies = ['btc', 'eth'];
+
+        if (sub === 'unusual') {
+          const { runOptionsUnusual } = require('../deribit');
+          await runOptionsUnusual(bot, chatId, 'BTC');
+        } else if (sub === 'eth') {
+          const { runOptions } = require('../deribit');
+          await runOptions(bot, chatId, 'ETH');
+        } else if (sub === 'btc' || !sub) {
+          const { runOptions } = require('../deribit');
+          await runOptions(bot, chatId, 'BTC');
+        } else {
+          await bot.sendMessage(chatId,
+            `📊 <b>Options Flow Analysis</b>\n\n` +
+            `Gunakan:\n` +
+            `/options — BTC options full analysis\n` +
+            `/options BTC — BTC options\n` +
+            `/options ETH — ETH options\n` +
+            `/options unusual — unusual activity scan`,
+            { parse_mode: 'HTML' }
+          );
         }
       } else if (text.startsWith('/stock')) {
         const args    = text.trim().split(/\s+/);

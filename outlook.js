@@ -189,9 +189,23 @@ function fetchUpcomingEvents() {
   });
 }
 
+function fetchBtcOptions() {
+  return cached('outlook_btc_options', 10 * 60_000, async () => {
+    try {
+      const { fetchBookSummary, fetchIndexPrice } = require('./deribit');
+      const [options, spotPrice] = await Promise.all([
+        fetchBookSummary('BTC'),
+        fetchIndexPrice('BTC')
+      ]);
+      if (!options || options.length === 0) return null;
+      return { options, spotPrice };
+    } catch { return null; }
+  });
+}
+
 // ─── Composite Bias Score (-10 to +10) ───────────────────────────────────────
 
-function computeBiasScore({ fg, global, btc, lsr, oi, funding, polyScore }) {
+function computeBiasScore({ fg, global, btc, lsr, oi, funding, polyScore, optionsData }) {
   let score = 0;
   const signals = [];
 
@@ -262,6 +276,14 @@ function computeBiasScore({ fg, global, btc, lsr, oi, funding, polyScore }) {
     else if (oi.oiChange < -5) { score -= 1;    signals.push({ icon: '🔴', label: `OI BTC ${fmt(oi.oiChange, 2)}% (1h) — deleveraging/long liquidation`, type: 'bear' }); }
     else if (oi.oiChange < -2) { score -= 0.5;  signals.push({ icon: '🟠', label: `OI BTC ${fmt(oi.oiChange, 2)}% (1h) — OI turun, waspada`, type: 'bear' }); }
     else                        { score += 0;    signals.push({ icon: '🟡', label: `OI BTC ${fmt(oi.oiChange, 2)}% (1h) — OI stabil`, type: 'neutral' }); }
+  }
+
+  // Options Flow from Deribit (weight ±1.5)
+  if (optionsData?.options) {
+    const { computeOptionsBias } = require('./deribit');
+    const optBias = computeOptionsBias(optionsData.options, optionsData.spotPrice);
+    score += optBias.score;
+    for (const s of optBias.signals) signals.push(s);
   }
 
   score = Math.max(-10, Math.min(10, Math.round(score * 10) / 10));
@@ -454,7 +476,7 @@ Fokus: bias arah, risiko utama, dan satu advice konkret untuk trader.`;
 
 // ─── Report Builder ───────────────────────────────────────────────────────────
 
-function buildReport({ score, signals, scenarios, cycleInfo, events, btc, global, fg, lsr, oi, funding, narrative, bullCount, bearCount }) {
+function buildReport({ score, signals, scenarios, cycleInfo, events, btc, global, fg, lsr, oi, funding, optionsData, narrative, bullCount, bearCount }) {
   const dateStr = new Date().toLocaleString('id-ID', {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Jakarta'
   });
@@ -525,6 +547,13 @@ function buildReport({ score, signals, scenarios, cycleInfo, events, btc, global
     r += '\n';
   }
 
+  // ── Options Sentiment (Deribit) ──
+  if (optionsData?.options) {
+    const { buildOptionsSentimentBlock } = require('./deribit');
+    r += buildOptionsSentimentBlock(optionsData.options, optionsData.spotPrice);
+    r += '\n';
+  }
+
   // ── Signal Confluence ──
   r += `<b>SIGNAL CONFLUENCE</b>\n`;
   signals.forEach(s => { r += `${s.icon} ${s.label}\n`; });
@@ -567,7 +596,7 @@ function buildReport({ score, signals, scenarios, cycleInfo, events, btc, global
   }
 
   r += `\n━━━━━━━━━━━━━━━━━━━━━━━━\n`;
-  r += `<i>Sumber: Binance · CoinGecko · Fear&amp;Greed · Polymarket · Finnhub</i>\n`;
+  r += `<i>Sumber: Binance · CoinGecko · Fear&amp;Greed · Polymarket · Deribit · Finnhub</i>\n`;
   r += `<i>Sub-command: /outlook macro · /outlook scenario</i>`;
 
   return r;
@@ -1357,7 +1386,7 @@ async function runOutlook(bot, chatId) {
     { parse_mode: 'HTML' }
   );
 
-  const [fg, global, btc, lsr, oi, funding, polyScore, events, c4h, d1, w1] = await Promise.all([
+  const [fg, global, btc, lsr, oi, funding, polyScore, events, c4h, d1, w1, optionsData] = await Promise.all([
     fetchFearGreed(),
     fetchGlobal(),
     fetchBtcData(),
@@ -1368,10 +1397,11 @@ async function runOutlook(bot, chatId) {
     fetchUpcomingEvents(),
     fetchBtcKlines4h(),
     fetchBtcKlinesDaily(),
-    fetchBtcKlinesWeekly()
+    fetchBtcKlinesWeekly(),
+    fetchBtcOptions()
   ]);
 
-  const { score, signals, bullCount, bearCount } = computeBiasScore({ fg, global, btc, lsr, oi, funding, polyScore });
+  const { score, signals, bullCount, bearCount } = computeBiasScore({ fg, global, btc, lsr, oi, funding, polyScore, optionsData });
   const cycleInfo = detectCyclePhase({ fg, global, score });
   const scenarios = buildScenarios({ score, btc, btcCandles: { c4h, d1, w1 } });
   const biasLabel = getBiasLabel(score);
@@ -1382,7 +1412,7 @@ async function runOutlook(bot, chatId) {
 
   const report = buildReport({
     score, signals, scenarios, cycleInfo, events,
-    btc, global, fg, lsr, oi, funding,
+    btc, global, fg, lsr, oi, funding, optionsData,
     narrative, bullCount, bearCount
   });
 
