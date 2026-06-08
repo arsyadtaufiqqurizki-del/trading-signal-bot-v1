@@ -143,7 +143,7 @@ function isVolumeRising(candles) {
   return recent5 > prev5;
 }
 
-async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL', fundingOI = null) {
+async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL', fundingOI = null, macroBias = null) {
   const [htfCandles, ltfCandles, execCandles] = await Promise.all([
     getKlines(pair.symbol, pair.htf, 200),
     getKlines(pair.symbol, pair.ltf, 200),
@@ -287,6 +287,17 @@ async function analyzeAsset(pair, btcTrend1h, btcTrend4h = 'NEUTRAL', fundingOI 
   } else if (btcTrend1h === 'BEARISH') {
     shortScore += 2; shortFactors.push('BTC 1H Bearish 📉');
     longScore -= 2;
+  }
+
+  // 0c. Macro Bias — Cross-Market Correlation (Medium Weight)
+  if (macroBias) {
+    if (macroBias.longScore > macroBias.shortScore) {
+      longScore += 1; longFactors.push('Macro Bias Bullish ✅');
+      shortScore -= 1;
+    } else if (macroBias.shortScore > macroBias.longScore) {
+      shortScore += 1; shortFactors.push('Macro Bias Bearish ⚠️');
+      longScore -= 1;
+    }
   }
 
   // 1. HTF trend alignment (High Weight)
@@ -643,8 +654,18 @@ async function fetchBtcTrends() {
 async function scanAllPairs() {
   const { btcTrend1h, btcTrend4h } = await fetchBtcTrends();
 
+  // Fetch macro data for cross-market correlation
+  let macroBias = null;
+  try {
+    const { getMacroData, getMacroBias } = require('./macro');
+    const macroData = await getMacroData();
+    if (macroData) macroBias = getMacroBias(macroData);
+  } catch (e) {
+    console.error('Error fetching macro data:', e.message);
+  }
+
   // Phase 1: Technical analysis untuk semua pair (tanpa funding/OI — cepat)
-  const results = await Promise.allSettled(PAIRS.map(p => analyzeAsset(p, btcTrend1h, btcTrend4h)));
+  const results = await Promise.allSettled(PAIRS.map(p => analyzeAsset(p, btcTrend1h, btcTrend4h, null, macroBias)));
   const candidates = results
     .filter(r => r.status === 'fulfilled' && r.value !== null && r.value.signal !== null)
     .map(r => r.value.signal)
@@ -670,7 +691,7 @@ async function scanAllPairs() {
     if (fo && (fo.fundingRate !== null || fo.oiChange !== null)) {
       const pair = PAIRS.find(p => p.name === sig.pair);
       if (pair) {
-        const { signal } = await analyzeAsset(pair, btcTrend1h, btcTrend4h, fo);
+        const { signal } = await analyzeAsset(pair, btcTrend1h, btcTrend4h, fo, macroBias);
         if (signal) {
           rescored.push(signal);
           continue;

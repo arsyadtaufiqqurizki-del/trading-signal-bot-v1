@@ -70,6 +70,7 @@ module.exports = async (req, res) => {
           `💥 /liq — Likuidasi &amp; L/S Ratio\n` +
           `🎯 /poly — Prediction market\n` +
           `📊 /options — Deribit Options Flow (PCR/MaxPain/GEX)\n` +
+          `📊 /macro — Cross-Market Correlation (DXY/Gold/S&P500/Yield)\n` +
           `🔎 /dex — Monitor token baru di DEX (SOL/BNB/ETH/BASE)\n\n` +
           `📰 <b>Berita &amp; Tren</b>\n` +
           `📰 /news — Berita market &amp; crypto\n` +
@@ -146,6 +147,19 @@ module.exports = async (req, res) => {
             `/options unusual — unusual activity scan`,
             { parse_mode: 'HTML' }
           );
+        }
+      } else if (text.startsWith('/macro')) {
+        const args = text.trim().split(/\s+/);
+        const sub  = args[1]?.toLowerCase();
+
+        if (sub === 'correlation') {
+          const { getMacroCorrelation } = require('../macro');
+          const msg = await getMacroCorrelation();
+          await bot.sendMessage(chatId, msg, { parse_mode: 'HTML' });
+        } else {
+          const { getMacroSnapshot } = require('../macro');
+          const msg = await getMacroSnapshot();
+          await bot.sendMessage(chatId, msg, { parse_mode: 'HTML' });
         }
       } else if (text.startsWith('/stock')) {
         const args    = text.trim().split(/\s+/);
