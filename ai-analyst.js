@@ -233,7 +233,7 @@ async function generateAnalysis(question, context) {
       stream: false
     }, {
       headers: {
-        'api-key': MIMO_API_KEY,
+        'Authorization': `Bearer ${MIMO_API_KEY}`,
         'Content-Type': 'application/json'
       },
       timeout: 30000
@@ -241,8 +241,9 @@ async function generateAnalysis(question, context) {
 
     return data.choices?.[0]?.message?.content || null;
   } catch (e) {
-    console.error('[AI Analyst] MiMo error:', e.response?.data || e.message);
-    return null;
+    const errDetail = e.response?.data?.error?.message || e.response?.data?.message || e.response?.data || e.message;
+    console.error('[AI Analyst] MiMo error:', errDetail);
+    return { error: errDetail };
   }
 }
 
@@ -312,10 +313,14 @@ async function handleAskQuestion(bot, chatId, question) {
 
   try {
     const context = await buildContext(question);
-    let analysis = await generateAnalysis(question, context);
+    const aiResult = await generateAnalysis(question, context);
 
-    if (!analysis) {
-      analysis = buildFallbackAnalysis(question, context);
+    let analysis;
+    if (aiResult && typeof aiResult === 'string') {
+      analysis = aiResult;
+    } else {
+      const errorMsg = aiResult?.error ? `\n⚠️ <i>MiMo AI error: ${aiResult.error}</i>\n` : '';
+      analysis = buildFallbackAnalysis(question, context) + errorMsg;
     }
 
     // Clean up: ensure HTML is valid for Telegram
