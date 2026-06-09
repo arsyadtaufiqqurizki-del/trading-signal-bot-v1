@@ -216,7 +216,7 @@ async function generateAnalysis(question, context) {
     const messages = [
       {
         role: 'system',
-        content: `Kamu adalah Senior Crypto Analyst profesional. Jawab pertanyaan user tentang market crypto berdasarkan data yang diberikan. Gunakan HTML formatting untuk Telegram (<b>, <i>, <code>). Gunakan emoji yang relevan. Pisahkan section dengan ━━━━━━━━━━━━━━━━━━━━━. Bahasa Indonesia kasual tapi profesional. Maksimal 800 karakter, padat dan actionable. Jangan gunakan markdown.`
+        content: `Kamu adalah Senior Crypto Analyst profesional. Jawab pertanyaan user tentang market crypto berdasarkan data yang diberikan. HANYA gunakan HTML tags ini: <b>, <i>, <code>, <pre>, <blockquote>. JANGAN gunakan tag lain (div, p, h1, br, table, dll). Pisahkan section dengan karakter ━━━━━━━━━━━━━━━━━━━━━. Gunakan emoji yang relevan. Bahasa Indonesia kasual tapi profesional. Maksimal 800 karakter, padat dan actionable. Jangan gunakan markdown.`
       },
       {
         role: 'user',
@@ -328,7 +328,17 @@ async function handleAskQuestion(bot, chatId, question) {
       .replace(/```html\s*/gi, '')
       .replace(/```\s*/gi, '')
       .replace(/\*\*/g, '')
-      .replace(/#{1,6}\s/g, '');
+      .replace(/#{1,6}\s/g, '')
+      .replace(/<\/?(?:div|p|br|hr|span|table|tr|td|th|ul|ol|li|h[1-6]|section|article|header|footer|main|nav|aside|figure|figcaption|img|video|audio|source|form|input|button|select|option|textarea|label|fieldset|legend|datalist|output|progress|meter|details|summary|dialog|slot|template|canvas|svg|path|rect|circle|ellipse|line|polyline|polygon|text|g|defs|use|symbol|marker|pattern|clipPath|mask|filter|feBlend|feColorMatrix|feComponentTransfer|feComposite|feConvolveMatrix|feDiffuseLighting|feDisplacementMap|feFlood|feGaussianBlur|feImage|feMerge|feMergeNode|feMorphology|feOffset|feSpecularLighting|feTile|feTurbulence|foreignObject)[^>]*\/?>/gi, '')
+      .replace(/<\/?(?:strong|em|ins|del|strike|tg-spoiler)\b[^>]*>/gi, (tag) => {
+        const t = tag.toLowerCase();
+        if (t.includes('strong')) return t.replace('strong', 'b');
+        if (t.includes('em')) return t.replace('em', 'i');
+        if (t.includes('ins')) return t.replace('ins', 'u');
+        if (t.includes('del') || t.includes('strike')) return t.replace(/del|strike/, 's');
+        if (t.includes('tg-spoiler')) return tag;
+        return tag;
+      });
 
     const MAX = 4000;
     if (analysis.length <= MAX) {
