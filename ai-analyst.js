@@ -2,7 +2,7 @@
 
 const axios = require('axios');
 
-const MIMO_API_KEY = process.env.MIMO_API_KEY || 'tp-ssqijy8zs5qxm6ptdlcnfuhsgmug0mi77gr1e4vaefnuw2v1';
+const MIMO_API_KEY = process.env.MIMO_API_KEY;
 const MIMO_BASE_URL = 'https://token-plan-sgp.xiaomimimo.com/v1';
 const MIMO_MODEL = 'mimo-v2.5';
 
