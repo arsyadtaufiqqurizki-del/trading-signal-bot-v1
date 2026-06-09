@@ -71,7 +71,8 @@ module.exports = async (req, res) => {
           `🎯 /poly — Prediction market\n` +
           `📊 /options — Deribit Options Flow (PCR/MaxPain/GEX)\n` +
           `📊 /macro — Cross-Market Correlation (DXY/Gold/S&P500/Yield)\n` +
-          `🔎 /dex — Monitor token baru di DEX (SOL/BNB/ETH/BASE)\n\n` +
+          `🔎 /dex — Monitor token baru di DEX (SOL/BNB/ETH/BASE)\n` +
+          `🤖 /ask — AI Market Analyst (tanya apa saja)\n\n` +
           `📰 <b>Berita &amp; Tren</b>\n` +
           `📰 /news — Berita market &amp; crypto\n` +
           `📡 /blom — Bloomberg Intelligence\n` +
@@ -1097,6 +1098,11 @@ module.exports = async (req, res) => {
           const { runDexChain } = require('../dex');
           await runDexChain(bot, chatId, sub);
         }
+
+      } else if (text.startsWith('/ask')) {
+        const question = text.replace(/^\/ask\s*/i, '').trim();
+        const { handleAskQuestion } = require('../ai-analyst');
+        await handleAskQuestion(bot, chatId, question);
 
       } else if (text.startsWith('/status')) {
         await bot.sendMessage(chatId, `✅ <b>Bot Active &amp; Running</b>\nSistem siap!`, { parse_mode: 'HTML' });

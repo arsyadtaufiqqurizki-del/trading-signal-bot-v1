@@ -59,6 +59,7 @@ Trading bot v1/
 ├── crypto-analyzer.js           # Crypto impact analysis (/crypto)
 ├── crypto-alerts.js             # Auto-monitoring crypto event alerts
 ├── crypto-impact-tracker.js     # Tracks economic event impact on crypto
+├── ai-analyst.js                # Conversational AI Analyst (/ask)
 ├── price-monitor.js             # Real-time price monitoring
 ├── content_generator.js         # AI content generation (/create)
 ├── social_scanner.js            # Social/news trend scanner
@@ -110,6 +111,7 @@ Trading bot v1/
 | Blockchain.info | `https://blockchain.info/stats` | None | onchain.js |
 | DefiLlama | `https://api.llama.fi/v2` | None | onchain.js |
 | OpenRouter | `https://openrouter.ai/api/v1/chat/completions` | API Key | news.js, bloomberg.js, content_generator.js, trend_analyzer.js |
+| Xiaomi MiMo | `https://api.xiaomimimo.com/v1` | API Key | ai-analyst.js ★ |
 | Google Gemini | via `@google/generative-ai` SDK | API Key | outlook.js, fast-analyzer.js, content_generator.js |
 | GitHub Gist | `https://api.github.com/gists` | Token | performance.js |
 | RSS Feeds | Various (CNBC, BBC, NYT, Reuters, FT, etc.) | None | news.js, bloomberg.js, social_scanner.js |
@@ -138,6 +140,7 @@ Commands di-register di `api/webhook.js` via if/else chain.
 | `/poly [sub]` | `polymarket.js` | `runPolyOverview` + variants | Prediction market |
 | `/stock [TICKER]` | `stock.js` | `runStockOverview` / `runStockDetail` | IDX stock analysis |
 | `/dex [sub]` | `dex.js` | `runDexOverview` + variants | DEX token monitor |
+| `/ask <question>` | `ai-analyst.js` | `handleAskQuestion` | Conversational AI Analyst ★ |
 | `/news` | `news.js` | `getNewsData` | Daily news report |
 | `/blom [sub]` | `bloomberg.js` | `runBloombergOverview` + variants | Bloomberg-style news |
 | `/crypto [sub]` | `crypto-analyzer.js` | various | Crypto event impact |
@@ -235,6 +238,7 @@ const results = await Promise.allSettled(PAIRS.map(p => analyze(p)));
 | `onchain.js` | 299 | Full — Fear&Greed, CoinGecko global, BTC stats (blockchain.info), DeFi TVL (DefiLlama), ETH staking |
 | `utils.js` | 31 | Full — fmt, pct, nowWIB, getSession, escMd |
 | `deribit.js` | 309 | Full — buat sendiri (PCR, Max Pain, IV, GEX, Unusual Activity, report builder) |
+| `ai-analyst.js` | ~200 | Full — buat sendiri (context gathering, Xiaomi MiMo AI, fallback analysis, /ask handler) ★ |
 | `package.json` | ~20 | Full — semua dependencies |
 | `server.js` | 209 | Full — Express server, 6 REST API endpoints, webhook/cron route, auto-news scheduler (10:00 WIB) |
 | `index.js` | 113 | Full — CLI entry point, one-shot scanAllPairs + Telegram send, formatSignal |
@@ -294,6 +298,8 @@ outlook.js ──→ binance.js, coingecko.js, economic-calendar.js
            ──→ polymarket.js, deribit.js ★, Gemini AI
 
 deribit.js ──→ axios (Deribit public API) ★
+
+ai-analyst.js ──→ axios (Xiaomi MiMo API) ★
 
 liq.js ──→ axios (Binance Futures Data API)
 onchain.js ──→ axios (blockchain.info, CoinGecko, DefiLlama)
