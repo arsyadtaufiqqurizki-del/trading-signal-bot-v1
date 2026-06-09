@@ -304,21 +304,8 @@ async function getMacroSnapshot() {
     divergences.forEach(d => { msg += `  • ${d.message}\n`; });
   }
 
-  return msg;
-}
-
-async function getMacroCorrelation() {
-  const macroData = await getMacroData();
-  if (!macroData) return '❌ Gagal mengambil data makro.';
-
-  const { assets, btcCloses } = macroData;
-
-  let msg = `📊 <b>CORRELATION MATRIX</b>\n`;
-  msg += `━━━━━━━━━━━━━━━━━━━━\n`;
-  msg += `📅 ${nowWIB()}\n\n`;
-
-  // Correlation with BTC
-  msg += `<b>BTC Correlation (30-day):</b>\n`;
+  // Correlation details
+  msg += `\n<b>📊 BTC Correlation (30-day):</b>\n`;
   for (const [key, asset] of Object.entries(assets)) {
     const corr = asset.correlation;
     if (corr === null) {
@@ -331,8 +318,58 @@ async function getMacroCorrelation() {
   }
 
   // Cross-asset correlations
-  msg += `\n<b>Cross-Asset Correlations:</b>\n`;
   const keys = Object.keys(assets);
+  const crossPairs = [];
+  for (let i = 0; i < keys.length; i++) {
+    for (let j = i + 1; j < keys.length; j++) {
+      const a = assets[keys[i]];
+      const b = assets[keys[j]];
+      if (a.closes.length === 0 || b.closes.length === 0) continue;
+      const minLen = Math.min(a.closes.length, b.closes.length);
+      const corr = pearsonCorrelation(a.closes.slice(-minLen), b.closes.slice(-minLen));
+      if (corr !== null) crossPairs.push({ a: a.name, b: b.name, corr });
+    }
+  }
+  if (crossPairs.length > 0) {
+    msg += `\n<b>🔗 Cross-Asset Correlations:</b>\n`;
+    crossPairs.forEach(p => { msg += `  • ${p.a} vs ${p.b}: ${fmt(p.corr, 3)}\n`; });
+  }
+
+  return msg;
+}
+
+async function getMacroCorrelation() {
+  const macroData = await getMacroData();
+  if (!macroData) return '❌ Gagal mengambil data makro.';
+
+  const { assets, btcCloses } = macroData;
+  const bias = getMacroBias(macroData);
+  const divergences = detectDivergences(macroData);
+
+  let msg = `📊 <b>CORRELATION MATRIX</b>\n`;
+  msg += `━━━━━━━━━━━━━━━━━━━━\n`;
+  msg += `📅 ${nowWIB()}\n\n`;
+
+  // BTC Correlation with strength bar + interpretation
+  msg += `<b>BTC Correlation (30-day):</b>\n`;
+  for (const [key, asset] of Object.entries(assets)) {
+    const corr = asset.correlation;
+    if (corr === null) {
+      msg += `  • ${asset.name}: N/A\n`;
+    } else {
+      const abs = Math.abs(corr);
+      const strength = abs > 0.7 ? 'Strong' : abs > 0.4 ? 'Moderate' : 'Weak';
+      const direction = corr > 0 ? 'Positive' : 'Negative';
+      const barLen = Math.round(abs * 10);
+      const bar = '█'.repeat(barLen) + '░'.repeat(10 - barLen);
+      msg += `  • ${asset.name}: <code>${fmt(corr, 3)}</code> ${bar} (${strength} ${direction})\n`;
+    }
+  }
+
+  // Cross-asset correlations with strength labels
+  msg += `\n<b>🔗 Cross-Asset Correlations:</b>\n`;
+  const keys = Object.keys(assets);
+  const crossPairs = [];
   for (let i = 0; i < keys.length; i++) {
     for (let j = i + 1; j < keys.length; j++) {
       const a = assets[keys[i]];
@@ -341,16 +378,72 @@ async function getMacroCorrelation() {
       const minLen = Math.min(a.closes.length, b.closes.length);
       const corr = pearsonCorrelation(a.closes.slice(-minLen), b.closes.slice(-minLen));
       if (corr !== null) {
-        msg += `  • ${a.name} vs ${b.name}: ${fmt(corr, 3)}\n`;
+        const abs = Math.abs(corr);
+        const strength = abs > 0.7 ? 'Strong' : abs > 0.4 ? 'Moderate' : 'Weak';
+        crossPairs.push({ a: a.name, b: b.name, corr, strength });
       }
     }
   }
+  crossPairs.forEach(p => {
+    const icon = p.corr > 0 ? '🟢' : '🔴';
+    msg += `  ${icon} ${p.a} vs ${p.b}: <code>${fmt(p.corr, 3)}</code> (${p.strength})\n`;
+  });
 
-  // Trend summary
-  msg += `\n<b>Trend Summary:</b>\n`;
+  // Trend + Momentum summary
+  msg += `\n<b>📈 Trend & Momentum:</b>\n`;
   for (const [key, asset] of Object.entries(assets)) {
     const trendEmoji = asset.trend === 'BULLISH' ? '🟢' : asset.trend === 'BEARISH' ? '🔴' : '⚪';
-    msg += `  ${trendEmoji} ${asset.name}: ${asset.trend} (${pct(asset.momentum)})\n`;
+    const momIcon = asset.momentum > 0 ? '▲' : asset.momentum < 0 ? '▼' : '─';
+    msg += `  ${trendEmoji} ${asset.name}: ${asset.trend} | Mom: ${momIcon} ${pct(asset.momentum)}\n`;
+  }
+
+  // Macro Bias
+  msg += `\n<b>🎯 Macro Bias:</b>\n`;
+  if (bias.longScore > bias.shortScore) {
+    msg += `  🟢 Bullish (${bias.longScore} vs ${bias.shortScore})\n`;
+  } else if (bias.shortScore > bias.longScore) {
+    msg += `  🔴 Bearish (${bias.shortScore} vs ${bias.longScore})\n`;
+  } else {
+    msg += `  ⚖️ Neutral (${bias.longScore} vs ${bias.shortScore})\n`;
+  }
+
+  // Factors
+  if (bias.factors.length > 0) {
+    msg += `\n<b>📋 Factors:</b>\n`;
+    bias.factors.forEach(f => { msg += `  • ${f}\n`; });
+  }
+
+  // Divergences
+  if (divergences.length > 0) {
+    msg += `\n<b>⚠️ Divergences:</b>\n`;
+    divergences.forEach(d => { msg += `  • ${d.message}\n`; });
+  }
+
+  // Key Correlation Insights
+  msg += `\n<b>💡 Correlation Insights:</b>\n`;
+  const btcMomentum = calcMomentum(btcCloses);
+  for (const [key, asset] of Object.entries(assets)) {
+    if (asset.correlation === null) continue;
+    const abs = Math.abs(asset.correlation);
+    if (abs < 0.4) continue;
+
+    const corrDir = asset.correlation > 0 ? 'positif' : 'negatif';
+    const momDir = asset.momentum > 0 ? 'naik' : asset.momentum < 0 ? 'turun' : 'flat';
+    const btcMomDir = btcMomentum > 0 ? 'naik' : btcMomentum < 0 ? 'turun' : 'flat';
+
+    if (asset.inverse) {
+      if (asset.momentum > 1 && btcMomentum > 1) {
+        msg += `  ⚠️ ${asset.name} ${momDir} + BTC ${btcMomDir} — melanggar korelasi ${corrDir} biasa!\n`;
+      } else if (asset.momentum < -1 && btcMomentum < -1) {
+        msg += `  ⚠️ ${asset.name} ${momDir} + BTC ${btcMomDir} — bergerak searah (seharusnya berlawanan)\n`;
+      }
+    } else {
+      if (asset.momentum > 1 && btcMomentum < -1) {
+        msg += `  ⚠️ ${asset.name} ${momDir} tapi BTC ${btcMomDir} — divergence risk-on/off!\n`;
+      } else if (asset.momentum < -1 && btcMomentum > 1) {
+        msg += `  ⚠️ ${asset.name} ${momDir} tapi BTC ${btcMomDir} — BTC decoupling!\n`;
+      }
+    }
   }
 
   return msg;
