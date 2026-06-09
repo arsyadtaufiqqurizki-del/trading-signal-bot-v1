@@ -328,17 +328,29 @@ async function handleAskQuestion(bot, chatId, question) {
       .replace(/```html\s*/gi, '')
       .replace(/```\s*/gi, '')
       .replace(/\*\*/g, '')
-      .replace(/#{1,6}\s/g, '')
-      .replace(/<\/?(?:div|p|br|hr|span|table|tr|td|th|ul|ol|li|h[1-6]|section|article|header|footer|main|nav|aside|figure|figcaption|img|video|audio|source|form|input|button|select|option|textarea|label|fieldset|legend|datalist|output|progress|meter|details|summary|dialog|slot|template|canvas|svg|path|rect|circle|ellipse|line|polyline|polygon|text|g|defs|use|symbol|marker|pattern|clipPath|mask|filter|feBlend|feColorMatrix|feComponentTransfer|feComposite|feConvolveMatrix|feDiffuseLighting|feDisplacementMap|feFlood|feGaussianBlur|feImage|feMerge|feMergeNode|feMorphology|feOffset|feSpecularLighting|feTile|feTurbulence|foreignObject)[^>]*\/?>/gi, '')
-      .replace(/<\/?(?:strong|em|ins|del|strike|tg-spoiler)\b[^>]*>/gi, (tag) => {
-        const t = tag.toLowerCase();
-        if (t.includes('strong')) return t.replace('strong', 'b');
-        if (t.includes('em')) return t.replace('em', 'i');
-        if (t.includes('ins')) return t.replace('ins', 'u');
-        if (t.includes('del') || t.includes('strike')) return t.replace(/del|strike/, 's');
-        if (t.includes('tg-spoiler')) return tag;
-        return tag;
-      });
+      .replace(/#{1,6}\s/g, '');
+
+    // 1) Simpan tag Telegram yang valid
+    const validTags = [];
+    analysis = analysis.replace(/<\/?(?:b|i|u|s|code|pre|blockquote|a|strong|em|ins|del|strike|tg-spoiler)\b[^>]*>/gi, (tag) => {
+      const idx = validTags.length;
+      validTags.push(tag);
+      return `__VALIDTAG${idx}__`;
+    });
+
+    // 2) Escape semua < > yang tersisa (bukan tag HTML)
+    analysis = analysis.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+    // 3) Restore tag Telegram yang valid
+    analysis = analysis.replace(/__VALIDTAG(\d+)__/g, (_, idx) => {
+      let tag = validTags[parseInt(idx)];
+      // Normalize alias tags
+      tag = tag.replace(/\bstrong\b/gi, 'b');
+      tag = tag.replace(/\bem\b/gi, 'i');
+      tag = tag.replace(/\bins\b/gi, 'u');
+      tag = tag.replace(/\bdel\b|\bstrike\b/gi, 's');
+      return tag;
+    });
 
     const MAX = 4000;
     if (analysis.length <= MAX) {
