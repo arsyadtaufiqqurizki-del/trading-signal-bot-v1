@@ -70,6 +70,7 @@ module.exports = async (req, res) => {
           `💥 /liq — Likuidasi &amp; L/S Ratio\n` +
           `🎯 /poly — Prediction market\n` +
           `📊 /options — Deribit Options Flow (PCR/MaxPain/GEX)\n` +
+          `🐋 /smartmoney — Deteksi aktivitas whale/institusi\n` +
           `📊 /macro — Cross-Market Correlation (DXY/Gold/S&P500/Yield)\n` +
           `🔎 /dex — Monitor token baru di DEX (SOL/BNB/ETH/BASE)\n` +
           `🤖 /ask — AI Market Analyst (tanya apa saja)\n\n` +
@@ -1103,6 +1104,18 @@ module.exports = async (req, res) => {
         const question = text.replace(/^\/ask\s*/i, '').trim();
         const { handleAskQuestion } = require('../ai-analyst');
         await handleAskQuestion(bot, chatId, question);
+
+      } else if (text.startsWith('/smartmoney')) {
+        const args = text.trim().split(/\s+/);
+        const sub  = args[1]?.toLowerCase();
+
+        if (sub) {
+          const { runSmartMoneyDetail } = require('../smartmoney');
+          await runSmartMoneyDetail(bot, chatId, sub);
+        } else {
+          const { runSmartMoneyOverview } = require('../smartmoney');
+          await runSmartMoneyOverview(bot, chatId);
+        }
 
       } else if (text.startsWith('/status')) {
         await bot.sendMessage(chatId, `✅ <b>Bot Active &amp; Running</b>\nSistem siap!`, { parse_mode: 'HTML' });
