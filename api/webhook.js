@@ -80,24 +80,8 @@ module.exports = async (req, res) => {
           `🔐 /crypto — Dampak berita ke market\n` +
           `📈 /trend — Tren sosmed Indonesia\n\n` +
           `🎬 <b>Content Creator</b>\n` +
-          `🎬 /create &lt;kw&gt; — 3 angle konten viral (default)\n` +
-          `🎵 /create tiktok &lt;kw&gt; — Script TikTok\n` +
-          `📸 /create ig &lt;kw&gt; — Caption &amp; Reels Instagram\n` +
-          `▶️ /create yt &lt;kw&gt; — Judul, thumbnail &amp; script YouTube\n` +
-          `🧵 /create thread &lt;kw&gt; — Viral Twitter/X Thread\n` +
-          `📧 /create email &lt;kw&gt; — Email marketing copy\n` +
-          `🪝 /create hook &lt;kw&gt; — 7 power hooks terbaik\n` +
-          `📝 /create script &lt;kw&gt; — Full video script 45 detik\n` +
-          `✍️ /create caption &lt;kw&gt; — 3 caption + hashtag\n` +
-          `💡 /create ideas &lt;kw&gt; — 10 ide konten kreatif\n` +
-          `🔥 /create viral &lt;kw&gt; — Formula konten viral\n` +
-          `📦 /create pack &lt;kw&gt; — Content pack lengkap\n` +
-          `👔 /create formal &lt;kw&gt; — Gaya profesional/B2B\n` +
-          `😎 /create santai &lt;kw&gt; — Gaya Gen Z casual\n` +
-          `💰 /create hard-sell &lt;kw&gt; — Copy jualan langsung\n` +
-          `📖 /create story &lt;kw&gt; — Format storytelling\n` +
-          `🎓 /create edukasi &lt;kw&gt; — Konten how-to &amp; edukatif\n` +
-          `⚔️ /create vs &lt;kw1&gt; &lt;kw2&gt; — Bandingkan 2 keyword\n\n` +
+          `🎬 /create — AI content generator (TikTok/IG/YT/X/Email/dll)\n` +
+          `   Ketik <code>/create</code> untuk lihat semua opsi\n\n` +
           `📊 <b>Performance</b>\n` +
           `📝 /result · 📊 /stats · ⏳ /pending\n\n` +
           `<i>Ketik perintah untuk mulai!</i>`,
