@@ -74,6 +74,9 @@ module.exports = async (req, res) => {
           `📊 /macro — Cross-Market Correlation (DXY/Gold/S&P500/Yield)\n` +
           `🔎 /dex — Monitor token baru di DEX (SOL/BNB/ETH/BASE)\n` +
           `🤖 /ask — AI Market Analyst (tanya apa saja)\n\n` +
+          `⚽ <b>Sepak Bola</b>\n` +
+          `⚽ /bola — Hasil &amp; prediksi Piala Dunia 2026\n` +
+          `   /bola jadwal · /bola grup · /bola prediksi · /bola h2h\n\n` +
           `📰 <b>Berita &amp; Tren</b>\n` +
           `📰 /news — Berita market &amp; crypto\n` +
           `📡 /blom — Bloomberg Intelligence\n` +
@@ -1099,6 +1102,39 @@ module.exports = async (req, res) => {
         } else {
           const { runSmartMoneyOverview } = require('../smartmoney');
           await runSmartMoneyOverview(bot, chatId);
+        }
+
+      } else if (text.startsWith('/bola')) {
+        const args = text.trim().split(/\s+/);
+        const sub  = args[1]?.toLowerCase();
+
+        if (sub === 'jadwal') {
+          const { runBolaJadwal } = require('../bola');
+          await runBolaJadwal(bot, chatId);
+
+        } else if (sub === 'hasil') {
+          const { runBolaHasil } = require('../bola');
+          await runBolaHasil(bot, chatId);
+
+        } else if (sub === 'grup') {
+          const { runBolaGrup } = require('../bola');
+          await runBolaGrup(bot, chatId);
+
+        } else if (sub === 'prediksi') {
+          const team1 = args[2] || null;
+          const team2 = args[3] || null;
+          const { runBolaPrediksi } = require('../bola');
+          await runBolaPrediksi(bot, chatId, team1, team2);
+
+        } else if (sub === 'h2h') {
+          const team1 = args[2] || '';
+          const team2 = args[3] || '';
+          const { runBolaH2H } = require('../bola');
+          await runBolaH2H(bot, chatId, team1, team2);
+
+        } else {
+          const { runBola } = require('../bola');
+          await runBola(bot, chatId);
         }
 
       } else if (text.startsWith('/status')) {
