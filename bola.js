@@ -368,7 +368,79 @@ function formatGrupReport(standings) {
 // AI PREDICTION
 // ============================================================
 
-async function generatePrediction(match) {
+// ============================================================
+// HELPER: BANGUN CONTEXT DATA REAL WC 2026
+// ============================================================
+
+/** Ambil form tim dari semua match WC yang sudah selesai */
+function buildTeamContext(teamName, allMatches) {
+  const name = teamName.toUpperCase();
+  const played = allMatches.filter(m => {
+    if (!m.homeTeam?.name || !m.awayTeam?.name) return false;
+    if (m.status !== 'FINISHED') return false;
+    return m.homeTeam.name.toUpperCase().includes(name) ||
+           m.awayTeam.name.toUpperCase().includes(name);
+  });
+
+  if (played.length === 0) return `${teamName}: Belum ada match yang selesai di WC 2026.`;
+
+  const lines = played.map(m => {
+    const isHome = m.homeTeam.name.toUpperCase().includes(name);
+    const opp    = isHome ? m.awayTeam.name : m.homeTeam.name;
+    const gf     = isHome ? m.score.fullTime.home : m.score.fullTime.away;
+    const ga     = isHome ? m.score.fullTime.away : m.score.fullTime.home;
+    const result = m.score.winner === 'DRAW' ? '🟡 Seri'
+                 : ((isHome && m.score.winner === 'HOME_TEAM') ||
+                    (!isHome && m.score.winner === 'AWAY_TEAM'))
+                   ? '🟢 Menang' : '🔴 Kalah';
+    return `  • vs ${opp}: ${result} ${gf}-${ga} (MD${m.matchday})`;
+  });
+
+  const wins   = played.filter(m => {
+    const isHome = m.homeTeam.name.toUpperCase().includes(name);
+    return (isHome && m.score.winner === 'HOME_TEAM') ||
+           (!isHome && m.score.winner === 'AWAY_TEAM');
+  }).length;
+  const draws  = played.filter(m => m.score.winner === 'DRAW').length;
+  const losses = played.length - wins - draws;
+  const gf     = played.reduce((s, m) => {
+    const isHome = m.homeTeam.name.toUpperCase().includes(name);
+    return s + (isHome ? m.score.fullTime.home : m.score.fullTime.away);
+  }, 0);
+  const ga     = played.reduce((s, m) => {
+    const isHome = m.homeTeam.name.toUpperCase().includes(name);
+    return s + (isHome ? m.score.fullTime.away : m.score.fullTime.home);
+  }, 0);
+
+  return [
+    `${teamName} di WC 2026 (${played.length} match): ${wins}M ${draws}S ${losses}K | GF:${gf} GA:${ga}`,
+    ...lines
+  ].join('\n');
+}
+
+/** Ambil klasemen grup dari standings data */
+function buildStandingsContext(groupCode, standings) {
+  if (!standings || !groupCode) return '';
+  // groupCode dari match API: 'GROUP_G'
+  // group dari standings API: 'Group G'
+  // Normalize keduanya: hapus spasi/underscore, uppercase
+  const normalize = s => s.toUpperCase().replace(/[\s_]/g, '');
+  const grup = standings.find(s =>
+    s.group && normalize(s.group) === normalize(groupCode)
+  );
+  if (!grup) return '';
+
+  const rows = grup.table.map(r =>
+    `  ${r.position}. ${r.team.shortName || r.team.name} — ${r.playedGames}M ${r.won}W ${r.draw}D ${r.lost}L | Poin:${r.points} GD:${r.goalDifference}`
+  );
+  return `Klasemen ${groupCode.replace('GROUP_', 'Group ')}:\n${rows.join('\n')}`;
+}
+
+// ============================================================
+// AI PREDICTION (dengan context data real WC 2026)
+// ============================================================
+
+async function generatePrediction(match, allMatches, standings) {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) throw new Error('OPENROUTER_API_KEY tidak tersedia');
 
@@ -378,39 +450,54 @@ async function generatePrediction(match) {
     ? `Fase Grup ${groupLabel(match.group)} Matchday ${match.matchday}`
     : stageLabel(match.stage);
 
-  const prompt = `Kamu adalah analis sepak bola profesional untuk Piala Dunia 2026.
+  // === Bangun context real dari data WC 2026 ===
+  const homeCtx      = buildTeamContext(home, allMatches);
+  const awayCtx      = buildTeamContext(away, allMatches);
+  const standingsCtx = match.stage === 'GROUP_STAGE'
+    ? buildStandingsContext(match.group, standings)
+    : '';
 
-Berikan prediksi SINGKAT dan PADAT untuk pertandingan:
+  const prompt = `Kamu adalah analis sepak bola profesional untuk Piala Dunia 2026.
+Analisis berdasarkan DATA NYATA WC 2026 berikut, bukan hanya pengetahuan umum.
+
+=== DATA REAL WC 2026 ===
+${homeCtx}
+
+${awayCtx}
+${standingsCtx ? '\n' + standingsCtx : ''}
+=========================
+
+Pertandingan yang akan diprediksi:
 🆚 ${home} vs ${away}
 🏟️ ${phase}
 📅 ${toWIBDate(match.utcDate)}
 
-Berikan dalam format PERSIS ini (gunakan emoji, tanpa teks tambahan lain):
+Berikan dalam format PERSIS ini (tanpa teks tambahan lain):
 
-KEKUATAN_HOME: [2-3 poin kekuatan tim home]
-KELEMAHAN_HOME: [1-2 poin kelemahan tim home]
-KEKUATAN_AWAY: [2-3 poin kekuatan tim away]
-KELEMAHAN_AWAY: [1-2 poin kelemahan tim away]
+KEKUATAN_HOME: [2-3 poin kekuatan tim home berdasarkan data di atas]
+KELEMAHAN_HOME: [1-2 poin kelemahan tim home berdasarkan data di atas]
+KEKUATAN_AWAY: [2-3 poin kekuatan tim away berdasarkan data di atas]
+KELEMAHAN_AWAY: [1-2 poin kelemahan tim away berdasarkan data di atas]
 PREDIKSI_SKOR: [contoh: 2-1]
 PEMENANG: [nama tim atau SERI]
 KEPERCAYAAN: [angka 50-95]
 OVER_2_5: [YA/TIDAK]
-ALASAN: [3 poin alasan utama, pisahkan dengan |]`;
+ALASAN: [3 poin alasan berdasarkan data nyata WC 2026, pisahkan dengan |]`;
 
   const { data } = await axios.post(
     'https://openrouter.ai/api/v1/chat/completions',
     {
       model: 'openai/gpt-oss-120b:free',
       messages: [{ role: 'user', content: prompt }],
-      max_tokens: 400,
-      temperature: 0.4,
+      max_tokens: 450,
+      temperature: 0.3,
     },
     {
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
-      timeout: 20000,
+      timeout: 25000,
     }
   );
 
@@ -570,14 +657,19 @@ async function runBolaGrup(bot, chatId) {
 
 /** /bola prediksi [TEAM1 TEAM2] */
 async function runBolaPrediksi(bot, chatId, team1, team2) {
-  await bot.sendMessage(chatId, '🤖 Menganalisis dan membuat prediksi AI...', { parse_mode: 'HTML' });
+  await bot.sendMessage(chatId, '🤖 Mengambil data WC 2026 & membuat prediksi AI...', { parse_mode: 'HTML' });
   try {
     let targetMatches = [];
 
+    // Ambil semua data yang dibutuhkan secara paralel
+    const [allMatches, standings] = await Promise.all([
+      fetchAllMatches(),
+      fetchStandings(),
+    ]);
+
     if (team1 && team2) {
       // Mode custom: cari match yang melibatkan kedua tim
-      const all = await fetchAllMatches();
-      targetMatches = all.filter(m => {
+      targetMatches = allMatches.filter(m => {
         if (!m.homeTeam?.name || !m.awayTeam?.name) return false;
         const h = m.homeTeam.name.toUpperCase();
         const a = m.awayTeam.name.toUpperCase();
@@ -596,12 +688,12 @@ async function runBolaPrediksi(bot, chatId, team1, team2) {
         return;
       }
     } else {
-      // Mode default: ambil match hari ini yang belum selesai
+      // Mode default: match hari ini yang belum selesai
       const today = await fetchTodayMatches();
       targetMatches = today.filter(m => ['TIMED','SCHEDULED','IN_PLAY'].includes(m.status));
 
       if (targetMatches.length === 0) {
-        // Coba besok
+        // Fallback ke besok
         const upcoming = await fetchUpcomingMatches();
         targetMatches = upcoming.slice(0, 3);
       }
@@ -614,14 +706,16 @@ async function runBolaPrediksi(bot, chatId, team1, team2) {
 
     // Prediksi max 2 match
     for (const match of targetMatches.slice(0, 2)) {
-      const cacheKey = `bola_pred_${match.id}`;
+      // Cache key menyertakan matchday agar cache ter-refresh tiap matchday baru
+      const cacheKey = `bola_pred_${match.id}_md${match.matchday}`;
       let text;
 
       const cached_pred = _store.get(cacheKey);
       if (cached_pred && Date.now() < cached_pred.exp) {
         text = cached_pred.val;
       } else {
-        const raw = await generatePrediction(match);
+        // Inject data real WC 2026 ke AI
+        const raw = await generatePrediction(match, allMatches, standings);
         text = parseAndFormatPrediction(match, raw);
         _store.set(cacheKey, { val: text, exp: Date.now() + TTL.PREDICT });
       }
