@@ -41,45 +41,50 @@ const REQ = { timeout: 12000 };
 // FLAG EMOJI MAP — 48 tim WC 2026
 // ============================================================
 const FLAG = {
-  // Grup A
-  'Mexico'         : '🇲🇽', 'South Korea'    : '🇰🇷', 'Czechia'        : '🇨🇿',
-  'South Africa'   : '🇿🇦',
-  // Grup B
-  'Argentina'      : '🇦🇷', 'Chile'          : '🇨🇱', 'Iraq'           : '🇮🇶',
-  'Poland'         : '🇵🇱',
-  // Grup C
-  'Brazil'         : '🇧🇷', 'Japan'          : '🇯🇵', 'New Zealand'    : '🇳🇿',
-  'DR Congo'       : '🇨🇩',
-  // Grup D
-  'Netherlands'    : '🇳🇱', 'Senegal'        : '🇸🇳', 'Serbia'         : '🇷🇸',
-  'Bahrain'        : '🇧🇭',
-  // Grup E
-  'USA'            : '🇺🇸', 'Panama'         : '🇵🇦', 'Albania'        : '🇦🇱',
-  'Turkey'         : '🇹🇷',
-  // Grup F
-  'Sweden'         : '🇸🇪', 'Croatia'        : '🇭🇷', 'Romania'        : '🇷🇴',
-  'Tunisia'        : '🇹🇳',
-  // Grup G
-  'Belgium'        : '🇧🇪', 'Colombia'       : '🇨🇴', 'Nigeria'        : '🇳🇬',
-  'Egypt'          : '🇪🇬',
-  // Grup H
-  'Spain'          : '🇪🇸', 'Saudi Arabia'   : '🇸🇦', 'Uruguay'        : '🇺🇾',
-  'Cape Verde Islands': '🇨🇻', 'Cape Verde'  : '🇨🇻',
-  // Grup I
-  'Germany'        : '🇩🇪', 'Australia'      : '🇦🇺', 'Cameroon'       : '🇨🇲',
-  'Uzbekistan'     : '🇺🇿',
-  // Grup J
-  'England'        : '🏴󠁧󠁢󠁥󠁮󠁧󠁿', 'Ecuador'        : '🇪🇨', 'Angola'         : '🇦🇴',
-  'Slovakia'       : '🇸🇰',
-  // Grup K
-  'France'         : '🇫🇷', 'Morocco'        : '🇲🇦', 'Portugal'       : '🇵🇹',
-  'Indonesia'      : '🇮🇩',
-  // Grup L
-  'Canada'         : '🇨🇦', 'Paraguay'       : '🇵🇾', 'Switzerland'    : '🇨🇭',
-  'Tanzania'       : '🇹🇿',
-  // Tambahan nama alternatif
-  'Korea Republic' : '🇰🇷', 'United States'  : '🇺🇸', 'Ivory Coast'    : '🇨🇮',
-  'Cote d\'Ivoire' : '🇨🇮', 'Bosnia and Herzegovina': '🇧🇦',
+  // === GRUP A ===
+  'Mexico'              : '🇲🇽', 'Korea Republic'    : '🇰🇷', 'South Korea'      : '🇰🇷',
+  'Czechia'             : '🇨🇿', 'Czech Republic'    : '🇨🇿', 'South Africa'     : '🇿🇦',
+  // === GRUP B ===
+  'Argentina'           : '🇦🇷', 'Iraq'              : '🇮🇶', 'Qatar'            : '🇶🇦',
+  'Bosnia-H.'           : '🇧🇦', 'Bosnia and Herzegovina': '🇧🇦', 'Bosnia Herzegovina': '🇧🇦',
+  'Bosnia-Herzegovina'  : '🇧🇦', 'Bosnia &amp; Herzegovina': '🇧🇦',
+  'Switzerland'         : '🇨🇭', 'Canada'            : '🇨🇦',
+  // === GRUP C ===
+  'Scotland'            : '🏴󠁧󠁢󠁳󠁣󠁴󠁿', 'Morocco'           : '🇲🇦', 'Brazil'           : '🇧🇷',
+  'Haiti'               : '🇭🇹',
+  // === GRUP D ===
+  'USA'                 : '🇺🇸', 'United States'     : '🇺🇸', 'Australia'        : '🇦🇺',
+  'Turkey'              : '🇹🇷', 'Türkiye'           : '🇹🇷', 'Paraguay'         : '🇵🇾',
+  // === GRUP E ===
+  'Germany'             : '🇩🇪', 'Ivory Coast'       : '🇨🇮', "Cote d'Ivoire"    : '🇨🇮',
+  'Ecuador'             : '🇪🇨', 'Curaçao'           : '🇨🇼', 'Curacao'          : '🇨🇼',
+  // === GRUP F ===
+  'Sweden'              : '🇸🇪', 'Japan'             : '🇯🇵', 'Netherlands'      : '🇳🇱',
+  'Tunisia'             : '🇹🇳',
+  // === GRUP G ===
+  'Belgium'             : '🇧🇪', 'Egypt'             : '🇪🇬', 'Iran'             : '🇮🇷',
+  'New Zealand'         : '🇳🇿',
+  // === GRUP H ===
+  'Spain'               : '🇪🇸', 'Cape Verde'        : '🇨🇻', 'Cape Verde Islands': '🇨🇻',
+  'Saudi Arabia'        : '🇸🇦', 'Uruguay'           : '🇺🇾',
+  // === GRUP I ===
+  'France'              : '🇫🇷', 'Senegal'           : '🇸🇳', 'Iraq'             : '🇮🇶',
+  'Norway'              : '🇳🇴',
+  // === GRUP J ===
+  'Algeria'             : '🇩🇿', 'Argentina'         : '🇦🇷', 'Jordan'           : '🇯🇴',
+  'Austria'             : '🇦🇹',
+  // === GRUP K ===
+  'Portugal'            : '🇵🇹', 'Colombia'          : '🇨🇴', 'Uzbekistan'       : '🇺🇿',
+  'Congo DR'            : '🇨🇩', 'DR Congo'          : '🇨🇩', 'Congo, DR'        : '🇨🇩',
+  // === GRUP L ===
+  'England'             : '🏴󠁧󠁢󠁥󠁮󠁧󠁿', 'Ghana'             : '🇬🇭', 'Croatia'          : '🇭🇷',
+  'Panama'              : '🇵🇦',
+  // === TAMBAHAN / ALIAS ===
+  'Poland'              : '🇵🇱', 'Serbia'            : '🇷🇸', 'Nigeria'          : '🇳🇬',
+  'Indonesia'           : '🇮🇩', 'Chile'             : '🇨🇱', 'Tanzania'         : '🇹🇿',
+  'Angola'              : '🇦🇴', 'Slovakia'          : '🇸🇰', 'Bahrain'          : '🇧🇭',
+  'Cameroon'            : '🇨🇲', 'Romania'           : '🇷🇴', 'Albania'          : '🇦🇱',
+  'Senegal'             : '🇸🇳',
 };
 
 function getFlag(teamName) {
@@ -213,8 +218,10 @@ async function fetchAllMatches() {
 // ============================================================
 
 function formatMatchLine(m) {
-  const home  = getFlag(m.homeTeam.name) + ' ' + (m.homeTeam.shortName || m.homeTeam.name);
-  const away  = (m.awayTeam.shortName || m.awayTeam.name) + ' ' + getFlag(m.awayTeam.name);
+  const homeName = m.homeTeam?.name || m.homeTeam?.shortName || 'TBD';
+  const awayName = m.awayTeam?.name || m.awayTeam?.shortName || 'TBD';
+  const home  = getFlag(homeName) + ' ' + (m.homeTeam?.shortName || homeName);
+  const away  = (m.awayTeam?.shortName || awayName) + ' ' + getFlag(awayName);
   const icon  = statusIcon(m.status);
   const grp   = groupLabel(m.group);
   const stage = stageLabel(m.stage);
@@ -645,6 +652,7 @@ async function runBolaH2H(bot, chatId, team1, team2) {
     const t2  = team2.toUpperCase();
 
     const matches = all.filter(m => {
+      if (!m.homeTeam?.name || !m.awayTeam?.name) return false;
       const h = m.homeTeam.name.toUpperCase();
       const a = m.awayTeam.name.toUpperCase();
       return (h.includes(t1) || a.includes(t1)) && (h.includes(t2) || a.includes(t2));
