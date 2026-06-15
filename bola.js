@@ -400,7 +400,7 @@ ALASAN: [3 poin alasan utama, pisahkan dengan |]`;
   const { data } = await axios.post(
     'https://openrouter.ai/api/v1/chat/completions',
     {
-      model: 'openai/gpt-4.1-mini',
+      model: 'openai/gpt-oss-120b:free',
       messages: [{ role: 'user', content: prompt }],
       max_tokens: 400,
       temperature: 0.4,
@@ -578,6 +578,7 @@ async function runBolaPrediksi(bot, chatId, team1, team2) {
       // Mode custom: cari match yang melibatkan kedua tim
       const all = await fetchAllMatches();
       targetMatches = all.filter(m => {
+        if (!m.homeTeam?.name || !m.awayTeam?.name) return false;
         const h = m.homeTeam.name.toUpperCase();
         const a = m.awayTeam.name.toUpperCase();
         const t1 = team1.toUpperCase();
