@@ -2,7 +2,7 @@
 
 > Dokumen ini berisi pemahaman menyeluruh tentang codebase trading bot.
 > Digunakan sebagai referensi untuk pengembangan dan debugging.
-> Terakhir diperbarui: 08 Juni 2026
+> Terakhir diperbarui: 16 Juni 2026
 
 ---
 
@@ -55,6 +55,7 @@ Trading bot v1/
 ├── stock.js                     # Indonesian stock analysis (/stock)
 ├── dex.js                       # DEX token monitor (/dex)
 ├── deribit.js                   # Deribit Options Flow (/options) ★ BARU
+├── bola.js                      # World Cup 2026 predictor (/bola) ★ BARU
 ├── economic-calendar.js         # Economic event calendar (Finnhub)
 ├── crypto-analyzer.js           # Crypto impact analysis (/crypto)
 ├── crypto-alerts.js             # Auto-monitoring crypto event alerts
@@ -110,7 +111,8 @@ Trading bot v1/
 | Finnhub | via SDK | API Key | economic-calendar.js |
 | Blockchain.info | `https://blockchain.info/stats` | None | onchain.js |
 | DefiLlama | `https://api.llama.fi/v2` | None | onchain.js |
-| OpenRouter | `https://openrouter.ai/api/v1/chat/completions` | API Key | news.js, bloomberg.js, content_generator.js, trend_analyzer.js |
+| OpenRouter | `https://openrouter.ai/api/v1/chat/completions` | API Key | news.js, bloomberg.js, content_generator.js, trend_analyzer.js, bola.js |
+| Football-Data.org | `https://api.football-data.org/v4` | API Key | bola.js ★ |
 | Xiaomi MiMo | `https://api.xiaomimimo.com/v1` | API Key | ai-analyst.js ★ |
 | Google Gemini | via `@google/generative-ai` SDK | API Key | outlook.js, fast-analyzer.js, content_generator.js |
 | GitHub Gist | `https://api.github.com/gists` | Token | performance.js |
@@ -146,6 +148,12 @@ Commands di-register di `api/webhook.js` via if/else chain.
 | `/crypto [sub]` | `crypto-analyzer.js` | various | Crypto event impact |
 | `/trend [sub]` | `social_scanner.js` + `trend_analyzer.js` | various | Social trend analysis |
 | `/create [sub] <kw>` | `content_generator.js` | various | AI content generation |
+| `/bola` | `bola.js` | `runBola` | Hasil & jadwal Piala Dunia 2026 hari ini ★ |
+| `/bola jadwal` | `bola.js` | `runBolaJadwal` | Jadwal pertandingan mendatang ★ |
+| `/bola hasil` | `bola.js` | `runBolaHasil` | Hasil pertandingan terbaru ★ |
+| `/bola grup` | `bola.js` | `runBolaGrup` | Klasemen 12 grup WC 2026 ★ |
+| `/bola prediksi [T1 T2]` | `bola.js` | `runBolaPrediksi` | Prediksi AI match (openai/gpt-oss-120b:free) ★ |
+| `/bola h2h T1 T2` | `bola.js` | `runBolaH2H` | Head-to-head history 2 tim ★ |
 | `/result PAIR DIR OUT` | `performance.js` | `updateResult` | Record signal result |
 | `/stats [days]` | `performance.js` | `getStats` | Performance stats |
 | `/pending` | `performance.js` | `getPending` | Pending signals |
@@ -238,6 +246,7 @@ const results = await Promise.allSettled(PAIRS.map(p => analyze(p)));
 | `onchain.js` | 299 | Full — Fear&Greed, CoinGecko global, BTC stats (blockchain.info), DeFi TVL (DefiLlama), ETH staking |
 | `utils.js` | 31 | Full — fmt, pct, nowWIB, getSession, escMd |
 | `deribit.js` | 309 | Full — buat sendiri (PCR, Max Pain, IV, GEX, Unusual Activity, report builder) |
+| `bola.js` | ~710 | Full — WC 2026 predictor: fetchers, cache (6 TTL), FLAG map 55+ tim, formatters HTML, AI prediction (openai/gpt-oss-120b:free via OpenRouter), 6 exported handlers ★ |
 | `ai-analyst.js` | ~200 | Full — buat sendiri (context gathering, Xiaomi MiMo AI, fallback analysis, /ask handler) ★ |
 | `package.json` | ~20 | Full — semua dependencies |
 | `server.js` | 209 | Full — Express server, 6 REST API endpoints, webhook/cron route, auto-news scheduler (10:00 WIB) |

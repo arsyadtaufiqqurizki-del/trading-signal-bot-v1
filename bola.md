@@ -348,15 +348,16 @@ const FLAG = {
 - [x] Fix: `Bosnia-Herzegovina` alias ditambahkan (nama exact dari API)
 - [x] Fix: null-safe guard untuk `homeTeam`/`awayTeam` TBD di babak gugur
 
-### Fase 4 — AI Prediction (45 menit)
-- [ ] `generatePrediction()` — OpenRouter prompt engineering
-- [ ] `runBolaPrediksi()` — prediksi match hari ini
-- [ ] `runBolaPrediksi(team1, team2)` — prediksi custom
-- [ ] Format output dengan confidence bar
+### Fase 4 — AI Prediction ✅ SELESAI
+- [x] `generatePrediction()` — OpenRouter prompt engineering (model: `openai/gpt-oss-120b:free`)
+- [x] `runBolaPrediksi()` — prediksi match hari ini (auto-detect TIMED/SCHEDULED)
+- [x] `runBolaPrediksi(team1, team2)` — prediksi custom 2 tim
+- [x] Format output dengan confidence bar `████████░░ 78%`
+- [x] Fix null guard di mode custom (match babak gugur TBD)
 
-### Fase 5 — Polish & Deploy (15 menit)
-- [x] Update `/start` menu — ditambahkan di Fase 2
-- [ ] Update `instruction.md`
+### Fase 5 — Polish & Deploy ✅ SELESAI
+- [x] Update `/start` menu — section ⚽ Sepak Bola dengan 7 subcommand
+- [x] Update `instruction.md` — file index, API table, command registry, sudah dipelajari
 - [x] `node -c bola.js` syntax check ✅
 - [x] Commit & push → auto-deploy ke Cloud Run ✅
 
