@@ -339,11 +339,14 @@ const FLAG = {
 - [x] Tambah entri `/bola` di menu `/start`
 - [x] Test syntax: `node -c bola.js` ✅ | `node -c api/webhook.js` ✅
 
-### Fase 3 — Subcommands Data (45 menit)
-- [ ] `runBolaJadwal()` — jadwal 7 hari ke depan
-- [ ] `runBolaHasil()` — hasil 3 pertandingan terakhir
-- [ ] `runBolaGrup()` — klasemen semua grup (A–L, total 12 grup WC 2026)
-- [ ] `runBolaH2H()` — head-to-head 2 tim
+### Fase 3 — Subcommands Data ✅ SELESAI
+- [x] `runBolaJadwal()` — jadwal mendatang dikelompokkan per tanggal
+- [x] `runBolaHasil()` — 5 hasil pertandingan terbaru
+- [x] `runBolaGrup()` — klasemen 12 grup WC 2026 (A–L) + auto-split jika > 4000 chars
+- [x] `runBolaH2H()` — head-to-head 2 tim, null-safe untuk match babak gugur
+- [x] Fix: FLAG emoji map dilengkapi 55+ entri termasuk semua alias API
+- [x] Fix: `Bosnia-Herzegovina` alias ditambahkan (nama exact dari API)
+- [x] Fix: null-safe guard untuk `homeTeam`/`awayTeam` TBD di babak gugur
 
 ### Fase 4 — AI Prediction (45 menit)
 - [ ] `generatePrediction()` — OpenRouter prompt engineering
@@ -352,10 +355,10 @@ const FLAG = {
 - [ ] Format output dengan confidence bar
 
 ### Fase 5 — Polish & Deploy (15 menit)
-- [ ] Update `/start` menu
+- [x] Update `/start` menu — ditambahkan di Fase 2
 - [ ] Update `instruction.md`
-- [ ] `node -c bola.js` syntax check
-- [ ] Commit & push → auto-deploy ke Cloud Run
+- [x] `node -c bola.js` syntax check ✅
+- [x] Commit & push → auto-deploy ke Cloud Run ✅
 
 ---
 
