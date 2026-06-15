@@ -75,8 +75,13 @@ module.exports = async (req, res) => {
           `🔎 /dex — Monitor token baru di DEX (SOL/BNB/ETH/BASE)\n` +
           `🤖 /ask — AI Market Analyst (tanya apa saja)\n\n` +
           `⚽ <b>Sepak Bola</b>\n` +
-          `⚽ /bola — Hasil &amp; prediksi Piala Dunia 2026\n` +
-          `   /bola jadwal · /bola grup · /bola prediksi · /bola h2h\n\n` +
+          `⚽ /bola — Hasil &amp; jadwal hari ini (live)\n` +
+          `🗓️ /bola jadwal — Jadwal pertandingan mendatang\n` +
+          `✅ /bola hasil — Hasil pertandingan terbaru\n` +
+          `📋 /bola grup — Klasemen semua grup (A–L)\n` +
+          `🤖 /bola prediksi — Prediksi AI match hari ini\n` +
+          `🤖 /bola prediksi [Tim1] [Tim2] — Prediksi AI custom\n` +
+          `📊 /bola h2h [Tim1] [Tim2] — Head-to-head history\n\n` +
           `📰 <b>Berita &amp; Tren</b>\n` +
           `📰 /news — Berita market &amp; crypto\n` +
           `📡 /blom — Bloomberg Intelligence\n` +
