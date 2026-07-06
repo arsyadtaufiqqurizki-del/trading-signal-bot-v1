@@ -127,9 +127,11 @@ function groupLabel(raw) {
 function stageLabel(stage) {
   const map = {
     GROUP_STAGE       : 'Fase Grup',
+    LAST_32           : 'Babak 32 Besar',
     LAST_16           : 'Babak 16 Besar',
     QUARTER_FINALS    : 'Perempat Final',
     SEMI_FINALS       : 'Semi Final',
+    THIRD_PLACE       : 'Perebutan Tempat 3',
     THIRD_PLACE_MATCH : 'Perebutan Tempat 3',
     FINAL             : 'FINAL 🏆',
   };
